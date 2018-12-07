@@ -7,6 +7,8 @@
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
 #include <stdlib.h>
+#include <netdb.h>
+
 
 #define PORT_NUMBER 55555
 #define BUFF_SIZE 2000
@@ -33,9 +35,10 @@ int createTunDevice() {
    ioctl(tunfd, TUNSETIFF, &ifr);
 
    printf("Configuring the TUN0 device as 10.4.2.5/24\n");
-   int retVal = system("ifconfig tun0 10.4.2.5/24 up");
+   int retVal = system("/sbin/ifconfig tun0 10.4.2.5/24 up");
    if(retVal != 0) {
      printf("Returned Error code %d\n");
+     exit(EXIT_FAILURE);
    }
 
    
@@ -61,33 +64,38 @@ int initUDPServer() {
     int len = recvfrom(sockfd, buff, 100, 0,                  
                 (struct sockaddr *) &peerAddr, &peerAddrLen);
 
-    printf("Connected with the client: %s\n", buff);
+    
+    printf("Connected to address %s from port %d. Msg:- %s\n", inet_ntoa(peerAddr.sin_addr), peerAddr.sin_port, buff);
+
     return sockfd;
 }
 
 void tunSelected(int tunfd, int sockfd){
-    int  len;
-    char buff[BUFF_SIZE];
+  int  len, size;
+  char buff[BUFF_SIZE];
+  bzero(buff, BUFF_SIZE);
+  len = read(tunfd, buff, BUFF_SIZE);
 
-    printf("Got a packet from TUN\n");
+  printf("Got a packet from TUN. Length:- %d\n", len);
 
-    bzero(buff, BUFF_SIZE);
-    len = read(tunfd, buff, BUFF_SIZE);
-    sendto(sockfd, buff, len, 0, (struct sockaddr *) &peerAddr,
-                    sizeof(peerAddr));
+  size = sendto(sockfd, buff, len, 0, (struct sockaddr *) &peerAddr,
+		sizeof(peerAddr));
+
+  printf("Sent %d to the socket.\n", size);
 }
 
 void socketSelected (int tunfd, int sockfd){
-    int  len;
-    char buff[BUFF_SIZE];
+  int  len;
+  char buff[BUFF_SIZE];
 
-    printf("Got a packet from the tunnel\n");
+  bzero(buff, BUFF_SIZE);
+  len = recvfrom(sockfd, buff, BUFF_SIZE, 0, NULL, NULL);
+  printf("Got a packet from the tunnel socket. Sending to TUN. Length %d\n", len);
 
-    bzero(buff, BUFF_SIZE);
-    len = recvfrom(sockfd, buff, BUFF_SIZE, 0, NULL, NULL);
-    write(tunfd, buff, len);
+  write(tunfd, buff, len);
 
 }
+
 int main (int argc, char * argv[]) {
    int tunfd, sockfd;
 
