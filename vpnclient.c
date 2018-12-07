@@ -6,6 +6,7 @@
 #include <linux/if.h>
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
+#include <stdlib.h>
 
 #define BUFF_SIZE 2000
 #define PORT_NUMBER 55555
@@ -26,8 +27,15 @@ int createTunDevice() {
    } else {
      printf("TUN FD = %d\n", tunfd);
    }
+
+   ioctl(tunfd, TUNSETIFF, &ifr);
+
+   printf("Configuring the TUN0 device as 10.4.2.99/24\n");
+   int retVal = system("ifconfig tun0 10.4.2.99/24 up");
+   if(retVal != 0) {
+     printf("Returned Error code %d\n");
+   }
    
-   ioctl(tunfd, TUNSETIFF, &ifr);       
 
    return tunfd;
 }
