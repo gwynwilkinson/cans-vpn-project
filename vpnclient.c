@@ -34,6 +34,7 @@ int createTunDevice() {
    int retVal = system("ifconfig tun0 10.4.2.99/24 up");
    if(retVal != 0) {
      printf("Returned Error code %d\n");
+     exit(EXIT_FAILURE);
    }
    
 
@@ -80,7 +81,7 @@ void socketSelected (int tunfd, int sockfd){
 
     bzero(buff, BUFF_SIZE);
     len = recvfrom(sockfd, buff, BUFF_SIZE, 0, NULL, NULL);
-    printf("Got a packet from the tunnel socket. Length %d\n", len);
+    printf("Got a packet from the tunnel socket. Sending to TUN. Length %d\n", len);
 
     write(tunfd, buff, len);
 
