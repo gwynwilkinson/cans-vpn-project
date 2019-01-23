@@ -22,5 +22,7 @@ To run the client:
 First change the SERVER_IP in vpnclient.c to match with the server's ip.  
 $ sudo ./vpnclient
 
-Note: You also need to configure the TUN interfaces on both sides
-and set up routings. See the lab description for instructions.
+TUN interfaces should be auto configured 
+
+client - 10.4.2.99/24
+server - 10.4.2.5/24
