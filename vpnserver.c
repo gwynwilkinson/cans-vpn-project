@@ -37,7 +37,7 @@ int createTunDevice() {
    printf("Configuring the TUN0 device as 10.4.0.250/24\n");
    int retVal = system("/sbin/ifconfig tun0 10.4.0.250/24 up");
    if(retVal != 0) {
-     printf("Returned Error code %d\n");
+     printf("Returned Error code %d\n", retVal);
      exit(EXIT_FAILURE);
    }
 
@@ -97,7 +97,16 @@ void socketSelected (int tunfd, int sockfd){
 }
 
 int main (int argc, char * argv[]) {
-   int tunfd, sockfd;
+  int tunfd, sockfd, retVal;
+
+   // Set the ip forwarding - sysctl net.ipv4.ip_forward=1
+   printf("Auto configuring IP forwarding\n ");
+   retVal = system("sysctl net.ipv4.ip_forward=1");
+
+   if(retVal != 0) {
+     printf("Configuring IP forwarding returned Error code %d\n", retVal);
+     exit(EXIT_FAILURE);
+   }
 
    tunfd  = createTunDevice();
    sockfd = initUDPServer();
