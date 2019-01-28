@@ -8,8 +8,13 @@
 #include <sys/ioctl.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <netinet/ip.h>
+#include <netinet/udp.h>
+#include <stdbool.h>
 
 #define BUFF_SIZE 2000
+
+bool printVerboseDebug=true;
 
 static struct option long_options[] =
 {
@@ -29,6 +34,44 @@ ushort remotePort;
 char protocolType[4];
 
 struct sockaddr_in peerAddr;
+
+/**************************************************************
+ *
+ * Function:            printIPHeader()
+ *
+ * Description:         Debug function to dump the contents of
+ *                      the packet IP header.
+ *
+ **************************************************************/
+void printIPHeader(char * buffer, int length) {
+
+  struct sockaddr_in source;
+  struct sockaddr_in dest;
+  struct iphdr *iph = (struct iphdr *)buffer;
+  unsigned short iphdrlen;
+
+  iphdrlen =iph->ihl*4;
+
+  memset(&source, 0, sizeof(source));
+  source.sin_addr.s_addr = iph->saddr;
+
+  memset(&dest, 0, sizeof(dest));
+  dest.sin_addr.s_addr = iph->daddr;
+
+  fprintf(stdout , "\n");
+  fprintf(stdout , "IP Header\n");
+  fprintf(stdout , "   |-IP Version\t\t: %d\n",(unsigned int)iph->version);
+  fprintf(stdout , "   |-IP Header Length\t: %d DWORDS or %d Bytes\n",(unsigned int)iph->ihl,((unsigned int)(iph->ihl))*4);
+  fprintf(stdout , "   |-Type Of Service\t: %d\n",(unsigned int)iph->tos);
+  fprintf(stdout , "   |-IP Total Length\t: %d Bytes(Packet size)\n",ntohs(iph->tot_len));
+  fprintf(stdout , "   |-Identification\t: %d\n",ntohs(iph->id));
+  fprintf(stdout , "   |-TTL\t\t: %d\n",(unsigned int)iph->ttl);
+  fprintf(stdout , "   |-Protocol\t\t: %d\n",(unsigned int)iph->protocol);
+  fprintf(stdout , "   |-Checksum\t\t: %d\n",ntohs(iph->check));
+  fprintf(stdout , "   |-Source IP\t\t: %s\n" , inet_ntoa(source.sin_addr) );
+  fprintf(stdout , "   |-Destination IP\t: %s\n" , inet_ntoa(dest.sin_addr) );
+  
+}
 
 /**************************************************************
  *
@@ -98,7 +141,7 @@ int connectToUDPServer(){
 
   struct sockaddr_in localAddr;
     int sockfd;
-    char *hello="Hello";
+    char *hello="Hello There";
     int saLen;
 
     // Create the peer socket address (Internet) structure.
@@ -166,11 +209,26 @@ void tunSelected(int tunfd, int sockfd){
 void socketSelected (int tunfd, int sockfd){
     int  len;
     char buff[BUFF_SIZE];
+    struct sockaddr_storage remoteAddress;
+    socklen_t addrSize = sizeof(remoteAddress);
+
+    struct sockaddr_in dest;
 
     bzero(buff, BUFF_SIZE);
-    len = recvfrom(sockfd, buff, BUFF_SIZE, 0, NULL, NULL);
-    printf("Got a packet from the tunnel socket. Sending to TUN. Length %d\n", len);
+    len = recvfrom(sockfd, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
 
+    printf("RCV - socket->TUN - Source IP %s:%d - Dest IP ??:?? - Length %d\n",
+	   inet_ntoa(((struct sockaddr_in *)&remoteAddress)->sin_addr),
+	   (int)ntohs(((struct sockaddr_in *)&remoteAddress)->sin_port),
+	   len);
+
+    // Debug output, dump the IP and UDP headers.
+    if(printVerboseDebug) {
+      printIPHeader(buff, len);
+    }
+
+
+    // Write the packet to the TUN device.
     write(tunfd, buff, len);
 }
 
