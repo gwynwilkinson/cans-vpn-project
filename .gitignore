@@ -1,3 +1,4 @@
 vpnclient
 vpnserver
 *~
+*.o
