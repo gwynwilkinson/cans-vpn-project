@@ -54,7 +54,7 @@ struct sockaddr_in peerAddr;
 int createTunDevice() {
 
     struct ifreq ifr;
-    char commandBuffer[60];
+    char commandBuffer[70];
     int tunFD;
     int retVal;
 
@@ -75,7 +75,7 @@ int createTunDevice() {
     printf("Configuring the '%s' device as 10.4.0.1/24\n", ifr.ifr_name);
 
     // Create the interface configuration command for the new interface name
-    sprintf(commandBuffer, "ifconfig %s 10.4.0.1/24 up", ifr.ifr_name);
+    sprintf(commandBuffer, "/sbin/ifconfig %s 10.4.0.1/24 up", ifr.ifr_name);
 
     retVal = system(commandBuffer);
 
@@ -155,8 +155,10 @@ int connectToUDPServer() {
 void tunSelected(int tunFD, int sockFD) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
+
     bzero(buff, BUFF_SIZE);
     len = read(tunFD, buff, BUFF_SIZE);
+
     struct iphdr *ipHeader = (struct iphdr *) buff;
 
     // Ignore IPv6 packets
@@ -164,7 +166,7 @@ void tunSelected(int tunFD, int sockFD) {
         return;
     }
 
-    if(printVerboseDebug) {
+    if (printVerboseDebug) {
         printf("TUN->Tunnel- Length:- %d\n", (int) len);
     }
 
@@ -187,7 +189,6 @@ void tunSelected(int tunFD, int sockFD) {
     if (size == 0) {
         perror("sendto");
     }
-
 }
 
 /**************************************************************
@@ -203,7 +204,6 @@ void socketSelected(int tunFD, int sockFD) {
     char buff[BUFF_SIZE];
     struct sockaddr_storage remoteAddress;
     socklen_t addrSize = sizeof(remoteAddress);
-    struct sockaddr_in dest;
     struct iphdr *ipHeader = (struct iphdr *) buff;
 
     bzero(buff, BUFF_SIZE);
@@ -214,7 +214,7 @@ void socketSelected(int tunFD, int sockFD) {
         return;
     }
 
-    if(printVerboseDebug) {
+    if (printVerboseDebug) {
         printf("Tunnel->TUN - Source IP %s:%d - Length %d\n",
                inet_ntoa(((struct sockaddr_in *) &remoteAddress)->sin_addr),
                (int) ntohs(((struct sockaddr_in *) &remoteAddress)->sin_port),
@@ -255,8 +255,8 @@ void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n Optional Options:- \n");
     fprintf(stdout, "   -p --vpn-server-port\t\t: Remote VPN server Port. Default - 55555 (UDP Port)\n");
     fprintf(stdout, "      --protocol <udp|tcp>\t: VPN protocol (UDP or TCP). Default - UDP\n");
-    fprintf(stdout, "   -v --verbose\t: Verbose debug logging. Dumps packet headers to stdout\n");
-    fprintf(stdout, "   -i --ip-headers\t: Print out IP headers");
+    fprintf(stdout, "   -v --verbose\t\t\t: Verbose debug logging. Dumps packet headers to stdout\n");
+    fprintf(stdout, "   -i --ip-headers\t\t: Print out IP headers\n");
     fprintf(stdout, "   -h --help\t\t\t: Help\n");
     fprintf(stdout, "\n");
 }
@@ -374,8 +374,14 @@ int main(int argc, char *argv[]) {
     // Process the command line options.
     processCmdLineOptions(argc, argv);
 
+    printf("************************************************************\n");
+    printf("VPN Client Initialisation:\n");
+
     tunFD = createTunDevice();
     sockFD = connectToUDPServer();
+
+    printf("VPN Client Initialisation Complete.\n");
+    printf("************************************************************\n");
 
     // Enter the main loop
     while (1) {
