@@ -35,11 +35,12 @@ static struct option long_options[] =
                 {NULL, 0,                              NULL, 0}
         };
 
-char serverIP[17];
-char routeIP[17];
-char routeNetmask[17];
+char serverIP[17] = "";
+char routeIP[17] = "";
+char tunIP[17] = "";
+char routeNetmask[17] = "";
 ushort remotePort;
-char protocolType[4];
+char protocolType[4] = "";
 
 struct sockaddr_in peerAddr;
 
@@ -72,10 +73,10 @@ int createTunDevice() {
     printf("TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
 
     // TODO - Change the local TUN IP to something unique.
-    printf("Configuring the '%s' device as 10.4.0.1/24\n", ifr.ifr_name);
+    printf("Configuring the '%s' device as %s/24\n", ifr.ifr_name, tunIP);
 
     // Create the interface configuration command for the new interface name
-    sprintf(commandBuffer, "/sbin/ifconfig %s 10.4.0.1/24 up", ifr.ifr_name);
+    sprintf(commandBuffer, "/sbin/ifconfig %s %s/24 up", ifr.ifr_name, tunIP);
 
     retVal = system(commandBuffer);
 
@@ -111,8 +112,10 @@ int connectToUDPServer() {
 
     struct sockaddr_in localAddr;
     int sockFD;
-    char *hello = "Client Connect";
+    char *hello = "Connection Request";
     int saLen;
+    ssize_t len;
+    char buff[17];
 
     // Create the peer socket address (Internet) structure.
     memset(&peerAddr, 0, sizeof(peerAddr));
@@ -141,6 +144,16 @@ int connectToUDPServer() {
 
     printf("Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
 
+    // Wait for the server to assign a unique TUN IP address
+    len = recvfrom(sockFD, buff, 17, 0,
+                   (struct sockaddr *) &peerAddr, &saLen);
+
+    buff[len] = '\0';
+
+    strcpy(tunIP, buff);
+
+    printf("Recevied TUN IP \"%s\" from the server\n", tunIP);
+
     return sockFD;
 }
 
@@ -159,10 +172,10 @@ void tunSelected(int tunFD, int sockFD) {
     bzero(buff, BUFF_SIZE);
     len = read(tunFD, buff, BUFF_SIZE);
 
-    struct iphdr *ipHeader = (struct iphdr *) buff;
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
 
     // Ignore IPv6 packets
-    if (ipHeader->version == 6) {
+    if (pIpHeader->version == 6) {
         return;
     }
 
@@ -172,11 +185,11 @@ void tunSelected(int tunFD, int sockFD) {
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
     if (printIPHeaders) {
-        if ((unsigned int) ipHeader->protocol == UDP) {
+        if ((unsigned int) pIpHeader->protocol == UDP) {
             printUDPHeader(buff, (int) len);
-        } else if ((unsigned int) ipHeader->protocol == TCP) {
+        } else if ((unsigned int) pIpHeader->protocol == TCP) {
             printTCPHeader(buff, (int) len);
-        } else if ((unsigned int) ipHeader->protocol == ICMP) {
+        } else if ((unsigned int) pIpHeader->protocol == ICMP) {
             printICMPHeader(buff, (int) len);
         } else {
             printIPHeader(buff, (int) len);
@@ -204,13 +217,13 @@ void socketSelected(int tunFD, int sockFD) {
     char buff[BUFF_SIZE];
     struct sockaddr_storage remoteAddress;
     socklen_t addrSize = sizeof(remoteAddress);
-    struct iphdr *ipHeader = (struct iphdr *) buff;
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
 
     bzero(buff, BUFF_SIZE);
     len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
 
     // Ignore IPv6 packets
-    if (ipHeader->version == 6) {
+    if (pIpHeader->version == 6) {
         return;
     }
 
@@ -223,11 +236,11 @@ void socketSelected(int tunFD, int sockFD) {
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
     if (printIPHeaders) {
-        if ((unsigned int) ipHeader->protocol == UDP) {
+        if ((unsigned int) pIpHeader->protocol == UDP) {
             printUDPHeader(buff, (int) len);
-        } else if ((unsigned int) ipHeader->protocol == TCP) {
+        } else if ((unsigned int) pIpHeader->protocol == TCP) {
             printTCPHeader(buff, (int) len);
-        } else if ((unsigned int) ipHeader->protocol == ICMP) {
+        } else if ((unsigned int) pIpHeader->protocol == ICMP) {
             printICMPHeader(buff, (int) len);
         } else {
             printIPHeader(buff, (int) len);
@@ -377,8 +390,8 @@ int main(int argc, char *argv[]) {
     printf("************************************************************\n");
     printf("VPN Client Initialisation:\n");
 
-    tunFD = createTunDevice();
     sockFD = connectToUDPServer();
+    tunFD = createTunDevice();
 
     printf("VPN Client Initialisation Complete.\n");
     printf("************************************************************\n");

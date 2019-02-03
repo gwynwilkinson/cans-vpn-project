@@ -13,8 +13,10 @@
 #include <stdbool.h>
 #include <getopt.h>
 #include "debug.h"
+#include "list.h"
 
 #define BUFF_SIZE 2000
+#define MAX_CLIENTS 250
 
 #define ICMP 1
 #define TCP 6
@@ -32,8 +34,41 @@ static struct option long_options[] =
                 {NULL, 0,                              NULL, 0}
         };
 
-struct sockaddr_in peerAddr;
 ushort udpPortNumber = 0;
+
+// Global variable for the IP lookup linked list.
+struct listEntry *pHead = NULL;
+
+struct sockaddr_in testpeerAddr;
+
+// Array storing assigned client IP addresses in the range 10.4.0.x
+bool clientIPAddress[MAX_CLIENTS] = {false};
+
+/***************************************************************
+ *
+ * Function:            uniqueClientIPAddress()
+ *
+ * Description:         Returns the next free client IP Address
+ *                      in the 10.4.0.1 -> 10.4.0.250
+ *
+ **************************************************************/
+void uniqueClientIPAddress(char *pIpAddress) {
+
+    int i;
+
+    // Loop through the free client array
+    for (i = 1; i < MAX_CLIENTS; i++) {
+        if (clientIPAddress[i] == false) {
+            sprintf(pIpAddress, "10.4.0.%d", i);
+            clientIPAddress[i] = true;
+            return;
+        }
+    }
+
+    // No free clients. Null the string.
+    pIpAddress[0] = '\0';
+
+}
 
 /**************************************************************
  *
@@ -83,7 +118,7 @@ int createTunDevice() {
  *
  * Function:            initUDPServer()
  *
- * Description:         Intialises the UDP server listener on
+ * Description:         Initialises the UDP server listener on
  *                      the Local UDP server port.
  *
  **************************************************************/
@@ -117,14 +152,6 @@ int initUDPServer() {
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
 
-    // Wait for the VPN client to "connect".
-    bzero(buff, 100);
-
-    len = recvfrom(sockFD, buff, 100, 0,
-                   (struct sockaddr *) &peerAddr, &saLen);
-
-    printf("New client connection from %s:%d. Initialisation Msg:- %s\n", inet_ntoa(peerAddr.sin_addr),
-           peerAddr.sin_port, buff);
 
     return sockFD;
 }
@@ -140,14 +167,16 @@ int initUDPServer() {
 void tunSelected(int tunFD, int sockFD) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
+    struct sockaddr_in destAddr;
+    struct sockaddr_in *pPeerAddr;
 
     bzero(buff, BUFF_SIZE);
     len = read(tunFD, buff, BUFF_SIZE);
 
-    struct iphdr *ipHeader = (struct iphdr *) buff;
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
 
     // Ignore IPv6 packets
-    if (ipHeader->version == 6) {
+    if (pIpHeader->version == 6) {
         return;
     }
 
@@ -157,19 +186,33 @@ void tunSelected(int tunFD, int sockFD) {
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
     if (printIPHeaders) {
-        if ((unsigned int) ipHeader->protocol == UDP) {
+        if ((unsigned int) pIpHeader->protocol == UDP) {
             printUDPHeader(buff, (int) len);
-        } else if ((unsigned int) ipHeader->protocol == TCP) {
+        } else if ((unsigned int) pIpHeader->protocol == TCP) {
             printTCPHeader(buff, (int) len);
-        } else if ((unsigned int) ipHeader->protocol == ICMP) {
+        } else if ((unsigned int) pIpHeader->protocol == ICMP) {
             printICMPHeader(buff, (int) len);
         } else {
             printIPHeader(buff, (int) len);
         }
     }
 
-    size = sendto(sockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
-                  sizeof(peerAddr));
+    // Perform the peer socket address lookup in the linked list
+    // based on the destination address in the buffer.
+    destAddr.sin_addr.s_addr = pIpHeader->daddr;
+    destAddr.sin_family = AF_INET;
+
+    pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), UDP);
+
+    if (pPeerAddr == NULL) {
+        printf("!!!!ERROR!!!! - tunSelected() could not find peer address structure for dest IP %s\n\n",
+               inet_ntoa(destAddr.sin_addr));
+        exit(EXIT_FAILURE);
+    }
+
+    // Send the message to the correct peer.
+    size = sendto(sockFD, buff, len, 0, (struct sockaddr *) pPeerAddr,
+                  sizeof(struct sockaddr));
 
     if (size == 0) {
         perror("sendto");
@@ -188,32 +231,76 @@ void tunSelected(int tunFD, int sockFD) {
 void socketSelected(int tunFD, int sockFD) {
     ssize_t len;
     char buff[BUFF_SIZE];
-    struct sockaddr_storage remoteAddress;
-    socklen_t addrSize = sizeof(remoteAddress);
-    struct iphdr *ipHeader = (struct iphdr *) buff;
+    struct sockaddr_in *pPeerAddr;
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
+    socklen_t addrSize = sizeof(struct sockaddr_in);
+
+    // Allocate the memory for the peerAddr structure
+    pPeerAddr = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
+
+    // Verify the memory was allocated
+    if (pPeerAddr == NULL) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
 
     bzero(buff, BUFF_SIZE);
-    len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
+    len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) pPeerAddr, &addrSize);
+
+    // Check if its a new client connection
+    if (strncmp("Connection Request", buff, 18) == 0) {
+        printf("New client connection from %s:%d. Initialisation Msg:- %s\n", inet_ntoa(pPeerAddr->sin_addr),
+               pPeerAddr->sin_port, buff);
+
+        // Determine if this is a reconnection from the same UDP client. If so,
+        // we will need to update the port number for the connection
+        if (updatePeerAddress(pPeerAddr, buff) == false) {
+            // Send back to the client a unique IP address.
+            uniqueClientIPAddress(buff);
+        } else {
+            // A reconnection from an existing client. The
+            // function will have reset the original TUN IP address. Do
+            // nothing here.
+
+            if(printVerboseDebug) {
+                printf("Reconnection from TUN IP %s\n", buff);
+            }
+        }
+
+        // Ensure we got a client address
+        if (buff[0] != '\0') {
+            ssize_t size = sendto(sockFD, buff, strlen(buff), 0, (struct sockaddr *) pPeerAddr,
+                                  sizeof(struct sockaddr));
+
+            printf("Assigned IP %s to client\n", buff);
+
+            // Add the peer address structure to the linked list.
+            insertTail(buff, UDP, pPeerAddr);
+        }
+
+        // Dont pass the new connection request to the TUN. Just return from the function.
+        return;
+    }
 
     // Ignore IPv6 packets
-    if (ipHeader->version == 6) {
+    if (pIpHeader->version == 6) {
         return;
     }
 
     if (printVerboseDebug) {
         printf("Tunnel->TUN - Source IP %s:%d - Length %d\n",
-               inet_ntoa(((struct sockaddr_in *) &remoteAddress)->sin_addr),
-               (int) ntohs(((struct sockaddr_in *) &remoteAddress)->sin_port),
+               inet_ntoa(pPeerAddr->sin_addr),
+               (int) ntohs(pPeerAddr->sin_port),
                (int) len);
     }
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
     if (printIPHeaders) {
-        if ((unsigned int) ipHeader->protocol == UDP) {
+        if ((unsigned int) pIpHeader->protocol == UDP) {
             printUDPHeader(buff, (int) len);
-        } else if ((unsigned int) ipHeader->protocol == TCP) {
+        } else if ((unsigned int) pIpHeader->protocol == TCP) {
             printTCPHeader(buff, (int) len);
-        } else if ((unsigned int) ipHeader->protocol == ICMP) {
+        } else if ((unsigned int) pIpHeader->protocol == ICMP) {
             printICMPHeader(buff, (int) len);
         } else {
             printIPHeader(buff, (int) len);
@@ -245,7 +332,7 @@ void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n");
 }
 
-/**************************************************************
+/*********************************************************************
  *
  * Function:            processCmdLineOptions()
  *
@@ -301,6 +388,7 @@ void processCmdLineOptions(int argc, char *argv[]) {
  *
  *********************************************************************/
 int main(int argc, char *argv[]) {
+
     int tunfd, sockfd, retVal;
 
     // Process the user supplied command line options.
