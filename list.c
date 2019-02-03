@@ -167,8 +167,7 @@ bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]) {
 
     // Check for empty list
     if(pHead == NULL) {
-        printf("findIPAddress() - Head == NULL\n");
-        return NULL;
+        return false;
     }
 
     while(sockCmpAddr(pNewPeerAddress, pCurrent->pPeerAddress) != 0) {

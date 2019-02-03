@@ -205,8 +205,8 @@ void tunSelected(int tunFD, int sockFD) {
     pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), UDP);
 
     if (pPeerAddr == NULL) {
-        printf("!!!!ERROR!!!! - tunSelected() could not find peer address structure for dest IP %s\n\n",
-               inet_ntoa(destAddr.sin_addr));
+        fprintf(stderr, "!!!!ERROR!!!! - tunSelected() could not find peer address structure for dest IP %s\n\n",
+                inet_ntoa(destAddr.sin_addr));
         exit(EXIT_FAILURE);
     }
 
@@ -249,8 +249,8 @@ void socketSelected(int tunFD, int sockFD) {
 
     // Check if its a new client connection
     if (strncmp("Connection Request", buff, 18) == 0) {
-        printf("New client connection from %s:%d. Initialisation Msg:- %s\n", inet_ntoa(pPeerAddr->sin_addr),
-               pPeerAddr->sin_port, buff);
+        fprintf(stdout, "New client connection from %s:%d. Initialisation Msg:- %s\n", inet_ntoa(pPeerAddr->sin_addr),
+                pPeerAddr->sin_port, buff);
 
         // Determine if this is a reconnection from the same UDP client. If so,
         // we will need to update the port number for the connection
@@ -262,8 +262,9 @@ void socketSelected(int tunFD, int sockFD) {
             // function will have reset the original TUN IP address. Do
             // nothing here.
 
-            if(printVerboseDebug) {
+            if (printVerboseDebug) {
                 printf("Reconnection from TUN IP %s\n", buff);
+                printf("************************************************************\n");
             }
         }
 
@@ -272,7 +273,11 @@ void socketSelected(int tunFD, int sockFD) {
             ssize_t size = sendto(sockFD, buff, strlen(buff), 0, (struct sockaddr *) pPeerAddr,
                                   sizeof(struct sockaddr));
 
-            printf("Assigned IP %s to client\n", buff);
+            if (printVerboseDebug) {
+                printf("Assigned IP %s to client\n", buff);
+            }
+
+            fprintf(stdout, "************************************************************\n");
 
             // Add the peer address structure to the linked list.
             insertTail(buff, UDP, pPeerAddr);
