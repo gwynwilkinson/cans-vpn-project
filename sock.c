@@ -36,8 +36,6 @@ int sockCmpAddr(const struct sockaddr_in *pSa1, const struct sockaddr_in *pSa2) 
             strcpy(ip1, inet_ntoa(pSa1->sin_addr));
             strcpy(ip2, inet_ntoa(pSa2->sin_addr));
 
-            printf("sockCmpAddr() - sa1 %s - sa2 %s\n", ip1, ip2);
-
             return(memcmp((void *) &(pSa1->sin_addr),
                               (void *) &(pSa2->sin_addr),
                               sizeof(struct in_addr)));

@@ -15,7 +15,7 @@
  *                      return a pointer to it.
  *
  **************************************************************/
-struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr) {
+struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int connectionFD) {
 
     // Allocate the memory for the new list entry node.
     struct listEntry *pNewEntry  = (struct listEntry*)malloc(sizeof(struct listEntry));
@@ -29,6 +29,7 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
     strcpy(pNewEntry->tunIP, pTunIP);
     pNewEntry->protocol = protocol;
     pNewEntry->pPeerAddress = pPeerAddr;
+    pNewEntry->connectionFD = connectionFD;
 
     // Initialise the previous and next pointers
     pNewEntry->prev = NULL;
@@ -45,13 +46,13 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
  *                      the list..
  *
  **************************************************************/
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr) {
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int connectionFD) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Create the new list entry node
-    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr);
+    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, connectionFD);
 
     // Check to see if the head is empty. If so, insert there
     if(pHead == NULL ) {
@@ -123,7 +124,7 @@ void deleteEntry(int protocol, struct sockaddr_in *pPeerAddr) {
  *                      address in string format. EG ("10.4.0.1")
  *
  **************************************************************/
-struct sockaddr_in* findIPAddress(char *pTunIP, int protocol) {
+struct sockaddr_in* findIPAddress(char *pTunIP, int *pProtocol, int *pConnectionFD) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
@@ -144,6 +145,12 @@ struct sockaddr_in* findIPAddress(char *pTunIP, int protocol) {
             pCurrent = pCurrent->next;
         }
     }
+
+    // Set the protocol type
+    *pProtocol = pCurrent->protocol;
+
+    // Set the connection FD
+    *pConnectionFD = pCurrent->connectionFD;
 
     return(pCurrent->pPeerAddress);
 }

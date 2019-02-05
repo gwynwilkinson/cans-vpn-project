@@ -72,7 +72,7 @@ int createTunDevice() {
     ioctl(tunFD, TUNSETIFF, &ifr);
     printf("TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
 
-    // TODO - Change the local TUN IP to something unique.
+    // Use the IP address returned to us in the connection handshake to configure the IP.
     printf("Configuring the '%s' device as %s/24\n", ifr.ifr_name, tunIP);
 
     // Create the interface configuration command for the new interface name
@@ -105,15 +105,15 @@ int createTunDevice() {
  * Function:            connectToUDPServer()
  *
  * Description:         Creates the UDP socket connection to the
- *                      remote VPN server on port 5555
+ *                      remote VPN server on specified port
  *
  **************************************************************/
 int connectToUDPServer() {
 
     struct sockaddr_in localAddr;
-    int sockFD;
+    int udpSockFD;
     char *hello = "Connection Request";
-    int saLen;
+    socklen_t saLen;
     ssize_t len;
     char buff[17];
 
@@ -123,38 +123,121 @@ int connectToUDPServer() {
     peerAddr.sin_port = htons(remotePort);
     peerAddr.sin_addr.s_addr = inet_addr(serverIP);
 
-    sockFD = socket(AF_INET, SOCK_DGRAM, 0);
+    udpSockFD = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (udpSockFD == 0) {
+        perror("UDP Socket Allocation");
+        exit(EXIT_FAILURE);
+    }
 
     // Obtain the local socket address information
     saLen = sizeof(localAddr);
 
     // Send a hello message to "connect" with the VPN server
-    sendto(sockFD, hello, strlen(hello), 0,
+    sendto(udpSockFD, hello, strlen(hello), 0,
            (struct sockaddr *) &peerAddr, sizeof(peerAddr));
 
-    if (getsockname(sockFD, (struct sockaddr *) &localAddr, (socklen_t *) &saLen) == -1) {
+    if (getsockname(udpSockFD, (struct sockaddr *) &localAddr, &saLen) == -1) {
         perror("getsockname");
         exit(EXIT_FAILURE);
     }
 
-    printf("Opened socket. FD = %d. Bound to IP = %s:%d\n",
-           sockFD,
+    printf("Opened UDP socket. FD = %d. Bound to IP = %s:%d\n",
+           udpSockFD,
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
 
     printf("Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
 
     // Wait for the server to assign a unique TUN IP address
-    len = recvfrom(sockFD, buff, 17, 0,
+    len = recvfrom(udpSockFD, buff, 16, 0,
                    (struct sockaddr *) &peerAddr, &saLen);
 
     buff[len] = '\0';
 
     strcpy(tunIP, buff);
 
-    printf("Recevied TUN IP \"%s\" from the server\n", tunIP);
+    printf("Allocated TUN IP \"%s\" from the server\n", tunIP);
 
-    return sockFD;
+    return udpSockFD;
+}
+
+
+/**************************************************************
+ *
+ * Function:            connectToTCPServer()
+ *
+ * Description:         Creates the UDP socket connection to the
+ *                      remote VPN server on specified port
+ *
+ **************************************************************/
+int connectToTCPServer() {
+
+    struct sockaddr_in localAddr;
+    int tcpSockFD;
+    char *hello = "Connection Request";
+    socklen_t saLen;
+    ssize_t len;
+    char buff[17];
+
+    // Create the peer socket address (Internet) structure.
+    memset(&peerAddr, 0, sizeof(peerAddr));
+    peerAddr.sin_family = AF_INET;
+    peerAddr.sin_port = htons(remotePort);
+    peerAddr.sin_addr.s_addr = inet_addr(serverIP);
+
+    tcpSockFD = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (tcpSockFD == 0) {
+        perror("TCP Socket Allocation");
+        exit(EXIT_FAILURE);
+    }
+
+    // Obtain the local socket address information
+    saLen = sizeof(localAddr);
+
+    // Send a server connection request message to "connect" with the VPN server
+    if(connect(tcpSockFD , (struct sockaddr *) &peerAddr, sizeof(peerAddr)));
+
+    // Get some info about the local socket
+    if (getsockname(tcpSockFD, (struct sockaddr *) &localAddr, &saLen) == -1) {
+        perror("getsockname");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Opened TCP socket. FD = %d. Bound to IP = %s:%d\n",
+           tcpSockFD,
+           inet_ntoa(localAddr.sin_addr),
+           (int) ntohs(localAddr.sin_port));
+
+    // Send the connection request to the server
+    len = send(tcpSockFD, hello, strlen(hello), 0);
+
+    if(len == -1) {
+        // Connection error
+        perror("TCP Connection Error");
+        exit(EXIT_FAILURE);
+    }
+
+    // Wait for the server to assign a unique TUN IP address
+    len = recv(tcpSockFD, buff, 16, 0);
+
+    if(len == -1) {
+        // Connection error
+        perror("TCP Connection Error");
+        exit(EXIT_FAILURE);
+    } else {
+        printf("Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
+    }
+
+    buff[len] = '\0';
+
+    strcpy(tunIP, buff);
+
+    printf("Allocated TUN IP \"%s\" from the server\n", tunIP);
+
+    return tcpSockFD;
+
 }
 
 /**************************************************************
@@ -162,10 +245,10 @@ int connectToUDPServer() {
  * Function:            tunSelected()
  *
  * Description:         Received a packet on the TUN.
- *                      Send to the UDP socket (tunnel).
+ *                      Send to the UDP or TCP socket (tunnel).
  *
  **************************************************************/
-void tunSelected(int tunFD, int sockFD) {
+void tunSelected(int tunFD, int udpSockFD, int tcpSockFD) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
 
@@ -196,8 +279,13 @@ void tunSelected(int tunFD, int sockFD) {
         }
     }
 
-    size = sendto(sockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
-                  sizeof(peerAddr));
+    // Use the correct method to send depending on the protocol used.
+    if(strcmp(protocolType, "udp") == 0) {
+        size = sendto(udpSockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
+                      sizeof(peerAddr));
+    } else {
+        size = send(tcpSockFD, buff, len, 0);
+    }
 
     if (size == 0) {
         perror("sendto");
@@ -206,13 +294,13 @@ void tunSelected(int tunFD, int sockFD) {
 
 /**************************************************************
  *
- * Function:            socketSelected()
+ * Function:            udpSocketSelected()
  *
- * Description:         Received a packet on the UDPsocket (tunnel)
+ * Description:         Received a packet on the UDP socket (tunnel)
  *                      Send to the TUN device (application)
  *
  **************************************************************/
-void socketSelected(int tunFD, int sockFD) {
+void udpSocketSelected(int tunFD, int sockFD) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_storage remoteAddress;
@@ -222,13 +310,70 @@ void socketSelected(int tunFD, int sockFD) {
     bzero(buff, BUFF_SIZE);
     len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
 
+    if(len == -1) {
+        perror("UDP socket recv error");
+        return;
+    }
+
     // Ignore IPv6 packets
     if (pIpHeader->version == 6) {
         return;
     }
 
     if (printVerboseDebug) {
-        printf("Tunnel->TUN - Source IP %s:%d - Length %d\n",
+        printf("UDP Tunnel->TUN - Source IP %s:%d - Length %d\n",
+               inet_ntoa(((struct sockaddr_in *) &remoteAddress)->sin_addr),
+               (int) ntohs(((struct sockaddr_in *) &remoteAddress)->sin_port),
+               (int) len);
+    }
+
+    // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
+    if (printIPHeaders) {
+        if ((unsigned int) pIpHeader->protocol == UDP) {
+            printUDPHeader(buff, (int) len);
+        } else if ((unsigned int) pIpHeader->protocol == TCP) {
+            printTCPHeader(buff, (int) len);
+        } else if ((unsigned int) pIpHeader->protocol == ICMP) {
+            printICMPHeader(buff, (int) len);
+        } else {
+            printIPHeader(buff, (int) len);
+        }
+    }
+
+    // Write the packet to the TUN device.
+    write(tunFD, buff, (size_t) len);
+}
+
+/**************************************************************
+ *
+ * Function:            tcpSocketSelected()
+ *
+ * Description:         Received a packet on the TCP socket (tunnel)
+ *                      Send to the TUN device (application)
+ *
+ **************************************************************/
+void tcpSocketSelected(int tunFD, int tcpSockFD) {
+    ssize_t len;
+    char buff[BUFF_SIZE];
+    struct sockaddr_storage remoteAddress;
+    socklen_t addrSize = sizeof(remoteAddress);
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
+
+    bzero(buff, BUFF_SIZE);
+    len = recv(tcpSockFD, buff, BUFF_SIZE, 0);
+
+    if(len == -1) {
+        perror("TCP socket recv error");
+        return;
+    }
+
+    // Ignore IPv6 packets
+    if (pIpHeader->version == 6) {
+        return;
+    }
+
+    if (printVerboseDebug) {
+        printf("TCP Tunnel->TUN - Source IP %s:%d - Length %d\n",
                inet_ntoa(((struct sockaddr_in *) &remoteAddress)->sin_addr),
                (int) ntohs(((struct sockaddr_in *) &remoteAddress)->sin_port),
                (int) len);
@@ -345,14 +490,28 @@ void processCmdLineOptions(int argc, char *argv[]) {
         }
     }
 
-    // Default the remote port if it was not specified as an option.
-    if (remotePort == 0) {
-        remotePort = 55555;
-    }
-
     // Default the protocol type to udp if it was not specified as an option.
     if (protocolType[0] == 0) {
         strcpy(protocolType, "udp");
+    } else {
+        // Verify that the protocol was set to 'udp' or 'tcp'.
+        if(strcmp(protocolType, "udp") != 0 && strcmp(protocolType, "tcp") != 0) {
+            // An invalid protocol type was specified. Error and quit
+            fprintf(stderr, "Invalid protocol type specified. Must be 'udp' or 'tcp'\n");
+            printUsage(argc, argv);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Default the remote port if it was not specified as an option.
+    if (remotePort == 0) {
+        if(strcmp(protocolType, "udp") == 0) {
+            // Default the port for UDP
+            remotePort = 55555;
+        } else {
+            // Default the port for TCP
+            remotePort = 44444;
+        }
     }
 
     // Check for mandatory parameters.
@@ -375,7 +534,8 @@ void processCmdLineOptions(int argc, char *argv[]) {
  *
  *********************************************************************/
 int main(int argc, char *argv[]) {
-    int tunFD, sockFD;
+    int tunFD, udpSockFD, tcpSockFD;
+    bool udp = false;
 
     // Initialise command line argument buffers
     serverIP[0] = '\0';
@@ -390,23 +550,44 @@ int main(int argc, char *argv[]) {
     printf("************************************************************\n");
     printf("VPN Client Initialisation:\n");
 
-    sockFD = connectToUDPServer();
+    if(strcmp(protocolType, "udp") == 0) {
+        udpSockFD = connectToUDPServer();
+    } else {
+        tcpSockFD = connectToTCPServer();
+    }
+
     tunFD = createTunDevice();
 
     printf("VPN Client Initialisation Complete.\n");
     printf("************************************************************\n");
 
-    // Enter the main loop
+    // Set a local boolean for the protocol type so we do not have
+    // to keep doing an expensive string compare.
+    if(strcmp(protocolType, "udp") == 0) {
+        udp = true;
+    }
+        // Enter the main loop
     while (1) {
         fd_set readFDSet;
 
         FD_ZERO(&readFDSet);
-        FD_SET(sockFD, &readFDSet);
+
+        if(udp) {
+            FD_SET(udpSockFD, &readFDSet);
+        } else {
+            FD_SET(tcpSockFD, &readFDSet);
+        }
+
         FD_SET(tunFD, &readFDSet);
+
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
 
-        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, sockFD);
-        if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD);
+        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, udpSockFD, tcpSockFD);
+        if(udp) {
+            if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD);
+        } else {
+            if (FD_ISSET(tcpSockFD, &readFDSet)) tcpSocketSelected(tunFD, tcpSockFD);
+        }
     }
 }
  
