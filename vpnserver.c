@@ -256,8 +256,8 @@ void tunSelected(int tunFD) {
 
     if (printVerboseDebug) {
         printf("TUN->%s Tunnel- Length:- %d\n",
-                protocol == UDP ? "UDP" : "TCP",
-                (int) len);
+               protocol == UDP ? "UDP" : "TCP",
+               (int) len);
     }
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
@@ -496,6 +496,13 @@ void tcpSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
                 if (len == -1) {
                     perror("Child server TCP recv");
                     exit(EXIT_FAILURE);
+                } else if (len == 0) {
+                    // Connection has been closed. Kill the connection and
+                    // child process
+                    close(connectionFD);
+                    exit(EXIT_SUCCESS);
+
+                    // TODO - Register and add the sighandler cleanup routing.
                 }
 
                 // Ignore IPv6 packets

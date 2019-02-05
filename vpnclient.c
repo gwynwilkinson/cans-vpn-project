@@ -334,6 +334,10 @@ void socketSelected(int tunFD, int sockFD, int protocol) {
             perror("TCP socket recv error");
         }
         return;
+    } else if (len == 0) {
+        // Connection has been closed. Quit.
+        close(sockFD);
+        exit(EXIT_SUCCESS);
     }
 
     // Ignore IPv6 packets
