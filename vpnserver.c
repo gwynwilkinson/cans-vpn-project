@@ -428,6 +428,11 @@ void tcpSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
     bzero(buff, BUFF_SIZE);
     len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
 
+    if (len == -1) {
+        perror("TCP Rcv error");
+        return;
+    }
+
     // Check if its a new client connection
     if (strncmp("Connection Request", buff, 18) == 0) {
         fprintf(stdout, "New TCP client connection from %s:%d. Initialisation Msg:- %s\n",
