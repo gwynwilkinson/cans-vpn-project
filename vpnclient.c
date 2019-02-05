@@ -251,7 +251,13 @@ int connectToTCPServer() {
 void tunSelected(int tunFD, int udpSockFD, int tcpSockFD) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
+    int protocol;
 
+    if(strcmp(protocolType, "udp") == 0) {
+        protocol = UDP;
+    } else {
+        protocol = TCP;
+    }
     bzero(buff, BUFF_SIZE);
     len = read(tunFD, buff, BUFF_SIZE);
 
@@ -263,7 +269,9 @@ void tunSelected(int tunFD, int udpSockFD, int tcpSockFD) {
     }
 
     if (printVerboseDebug) {
-        printf("TUN->Tunnel- Length:- %d\n", (int) len);
+        printf("TUN->%s Tunnel- Length:- %d\n",
+                protocol == UDP ? "UDP" : "TCP",
+                (int) len);
     }
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
@@ -280,7 +288,7 @@ void tunSelected(int tunFD, int udpSockFD, int tcpSockFD) {
     }
 
     // Use the correct method to send depending on the protocol used.
-    if (strcmp(protocolType, "udp") == 0) {
+    if (protocol == UDP) {
         size = sendto(udpSockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
                       sizeof(peerAddr));
     } else {

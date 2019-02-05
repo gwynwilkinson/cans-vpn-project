@@ -244,8 +244,20 @@ void tunSelected(int tunFD) {
         return;
     }
 
+    // Perform the peer socket address lookup in the linked list
+    // based on the destination address in the buffer.
+    destAddr.sin_addr.s_addr = pIpHeader->daddr;
+    destAddr.sin_family = AF_INET;
+
+    // Obtain the peerAddress structure for this destination and set
+    // the protocol variable so that we can determine which method to
+    // use.
+    pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &connectionFD);
+
     if (printVerboseDebug) {
-        printf("TUN->Tunnel- Length:- %d\n", (int) len);
+        printf("TUN->%s Tunnel- Length:- %d\n",
+                protocol == UDP ? "UDP" : "TCP",
+                (int) len);
     }
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
@@ -260,16 +272,6 @@ void tunSelected(int tunFD) {
             printIPHeader(buff, (int) len);
         }
     }
-
-    // Perform the peer socket address lookup in the linked list
-    // based on the destination address in the buffer.
-    destAddr.sin_addr.s_addr = pIpHeader->daddr;
-    destAddr.sin_family = AF_INET;
-
-    // Obtain the peerAddress structure for this destination and set
-    // the protocol variable so that we can determine which method to
-    // use.
-    pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &connectionFD);
 
     if (pPeerAddr == NULL) {
         fprintf(stderr, "!!!!ERROR!!!! - tunSelected() could not find peer address structure for dest IP %s\n\n",
