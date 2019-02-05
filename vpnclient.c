@@ -322,6 +322,9 @@ void socketSelected(int tunFD, int sockFD, int protocol) {
         len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
     } else {
         len = recv(sockFD, buff, BUFF_SIZE, 0);
+
+        // Get the peer address info
+        getpeername(sockFD, (struct sockaddr *) &remoteAddress, &addrSize);
     }
 
     if (len == -1) {
