@@ -207,11 +207,11 @@ void printICMPHeader(char *buffer, int length) {
     fprintf(stdout, "   |-Type\t\t: %d",(unsigned int)(icmpHeader->type));
 
     if((unsigned int)(icmpHeader->type) == ICMP_ECHO) {
-        fprintf(stdout, "  (ICMP Echo)\n");
+        fprintf(stdout, " (ICMP Echo)\n");
     } else if((unsigned int)(icmpHeader->type) == ICMP_ECHOREPLY) {
-        fprintf(stdout, "  (ICMP Echo Reply)\n");
+        fprintf(stdout, " (ICMP Echo Reply)\n");
     } else if((unsigned int)(icmpHeader->type) == ICMP_DEST_UNREACH) {
-        fprintf(stdout, "  (Dest Unreachable)\n");
+        fprintf(stdout, " (Dest Unreachable)\n");
     }
 
     fprintf(stdout, "   |-Code\t\t: %d\n",(unsigned int)(icmpHeader->code));

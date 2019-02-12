@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-g
-DEPS = vpnserver.h vpnclient.h debug.h list.h sock.h
+DEPS = *h
 SERVER_OBJ = list.o sock.o
 COMMON_OBJ = debug.o
 

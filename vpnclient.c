@@ -147,7 +147,7 @@ int connectToUDPServer() {
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
 
-    printf("Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
+    printf("Attempting connection to server\n");
 
     // Wait for the server to assign a unique TUN IP address
     len = recvfrom(udpSockFD, buff, 16, 0,
@@ -157,6 +157,8 @@ int connectToUDPServer() {
         // Connection error
         perror("UDP Connection Error");
         exit(EXIT_FAILURE);
+    } else {
+        printf("Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
     }
 
     buff[len] = '\0';
@@ -215,6 +217,8 @@ int connectToTCPServer() {
            tcpSockFD,
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
+
+    printf("Attempting connection to server\n");
 
     // Send the connection request to the server
     len = send(tcpSockFD, hello, strlen(hello), 0);
