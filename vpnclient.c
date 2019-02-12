@@ -391,8 +391,8 @@ void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n Usage: %s [options]\n\n", argv[0]);
     fprintf(stdout, " Proof of concept for VPN Client\n\n");
     fprintf(stdout, " Mandatory Arguments:- \n");
-    fprintf(stdout, "   -v --vpn-server-ip\t\t: Remote VPN Server IP in IPv4 format\n");
-    fprintf(stdout, "   -r --route-network\t\t: Remote Network IP to add route for\n");
+    fprintf(stdout, "   -s --vpn-server-ip\t\t: Remote VPN Server IP in IPv4 format\n");
+    fprintf(stdout, "   -n --route-network\t\t: Remote Network IP to add route for\n");
     fprintf(stdout, "   -m --route-netmask\t\t: Remote Network Netmask used in route add\n");
     fprintf(stdout, "\n Optional Arguments:- \n");
     fprintf(stdout, "   -p --vpn-server-port\t\t: Remote VPN server Port. Default - 55555 (UDP Port)\n");
