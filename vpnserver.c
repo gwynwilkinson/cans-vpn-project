@@ -42,8 +42,6 @@ ushort tcpPortNumber = 0;
 // Global variable for the IP lookup linked list.
 struct listEntry *pHead = NULL;
 
-struct sockaddr_in testpeerAddr;
-
 // Array storing assigned client IP addresses in the range 10.4.0.x
 bool clientIPAddress[MAX_CLIENTS] = {false};
 
@@ -548,9 +546,9 @@ void tcpSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
 void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n Usage: %s [options]\n\n", argv[0]);
     fprintf(stdout, " Proof of concept for VPN Server\n\n");
-    fprintf(stdout, " Mandatory Options:- \n");
+    fprintf(stdout, " Mandatory Arguments:- \n");
     fprintf(stdout, "   \n");
-    fprintf(stdout, "\n Optional Options:- \n");
+    fprintf(stdout, "\n Optional Arguments:- \n");
     fprintf(stdout, "   -t --tcp-server-port\t\t: Local TCP Server Port. Default - 44444\n");
     fprintf(stdout, "   -u --udp-server-port\t\t: Local UDP Server Port. Default - 55555\n");
     fprintf(stdout, "   -v --verbose\t\t\t: Verbose debug logging. Dumps packet headers to stdout\n");
