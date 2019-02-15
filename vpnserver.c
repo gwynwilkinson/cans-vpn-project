@@ -410,9 +410,10 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
  * Description:         The TUN (application) is trying to send
  *                      a packet to the tunnel. Receive the
  *                      data from the PIPE and send to the
- *                      tunnel FD
+ *                      TCP tunnel FD
+ *
  **************************************************************/
-void readChildPIPE(int pipeFD, int protocol) {
+void readChildPIPE(int pipeFD) {
 
     char buff[BUFF_SIZE];
     struct iphdr *pIpHeader = (struct iphdr *) buff;
@@ -420,6 +421,7 @@ void readChildPIPE(int pipeFD, int protocol) {
     struct sockaddr_in *pPeerAddr;
     ssize_t len, size;
     int connectionFD;
+    int protocol = TCP;
 
     // Read the data from the PIPE (TUN)
     len = read(pipeFD, buff, BUFF_SIZE);
@@ -427,11 +429,6 @@ void readChildPIPE(int pipeFD, int protocol) {
     if (len == 0) {
         perror("PIPE read error");
         exit(EXIT_FAILURE);
-    }
-
-    // Ignore IPv6 packets
-    if (pIpHeader->version == 6) {
-        return;
     }
 
     // Perform the peer socket address lookup in the linked list
@@ -444,19 +441,12 @@ void readChildPIPE(int pipeFD, int protocol) {
     // use.
     pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD);
 
-    // Write the data to the socket
-    if (protocol == UDP) {
-        // TODO - Not currently supported for UDP. Do we make UDP a child subprocess too?
-        printf("Error! Should never reach here - readChildPIPE() for UDP\n");
-        exit(EXIT_FAILURE);
-    } else {
-        // Send the buffer to the TCP socket
-        size = send(connectionFD, buff, (size_t) len, 0);
+    // Send the buffer to the TCP socket
+    size = send(connectionFD, buff, (size_t) len, 0);
 
-        if (size == 0) {
-            // Error sending data
-            perror("TCP socket send");
-        }
+    if (size == 0) {
+        // Error sending data
+        perror("TCP socket send");
     }
 
 }
@@ -536,8 +526,8 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
  *                      data from the PIPE and send to the
  *                      tunnel FD
  **************************************************************/
-void childSubProcess(int udpSockFD, int tcpSockFD, int protocol,
-                     struct sockaddr_in *pPeerAddr, int pipeFD[], int connectionFD, int tunFD) {
+void childSubProcess(int udpSockFD, int tcpSockFD, struct sockaddr_in *pPeerAddr,
+                     int pipeFD[], int connectionFD, int tunFD) {
 
     // This is the child instance of the server. Close down the TCP
     // server listener port, UDP port. We will only be concerned with
@@ -563,7 +553,7 @@ void childSubProcess(int udpSockFD, int tcpSockFD, int protocol,
 
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
 
-        if (FD_ISSET(pipeFD[0], &readFDSet)) readChildPIPE(pipeFD[0], TCP);
+        if (FD_ISSET(pipeFD[0], &readFDSet)) readChildPIPE(pipeFD[0]);
         if (FD_ISSET(connectionFD, &readFDSet)) readChildTCPSocket(tunFD, connectionFD, pPeerAddr);
     }
 }
@@ -574,7 +564,7 @@ void childSubProcess(int udpSockFD, int tcpSockFD, int protocol,
  *
  * Description:         Received a packet on the TCP socket (tunnel)
  *                      Allocate a new TUN IP for the client and then
- *                      spawn a new Child process to handle
+ *                      spawn a new child process to handle
  *                      future data from this connection
  *
  **************************************************************/
@@ -670,7 +660,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
             // This is the Child process
 
             // Handle the child process sub-function
-            childSubProcess(udpSockFD, tcpSockFD, TCP, pPeerAddr, pipeFD, connectionFD, tunFD);
+            childSubProcess(udpSockFD, tcpSockFD, pPeerAddr, pipeFD, connectionFD, tunFD);
 
         } else {
             // This is the Parent process
