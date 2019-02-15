@@ -15,7 +15,7 @@
  *                      return a pointer to it.
  *
  **************************************************************/
-struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int connectionFD) {
+struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD) {
 
     // Allocate the memory for the new list entry node.
     struct listEntry *pNewEntry  = (struct listEntry*)malloc(sizeof(struct listEntry));
@@ -30,6 +30,7 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
     pNewEntry->protocol = protocol;
     pNewEntry->pPeerAddress = pPeerAddr;
     pNewEntry->connectionFD = connectionFD;
+    pNewEntry->pipeFD = pipFD;
 
     // Initialise the previous and next pointers
     pNewEntry->prev = NULL;
@@ -46,13 +47,13 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
  *                      the list..
  *
  **************************************************************/
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int connectionFD) {
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Create the new list entry node
-    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, connectionFD);
+    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD);
 
     // Check to see if the head is empty. If so, insert there
     if(pHead == NULL ) {
@@ -124,7 +125,7 @@ void deleteEntry(int protocol, struct sockaddr_in *pPeerAddr) {
  *                      address in string format. EG ("10.4.0.1")
  *
  **************************************************************/
-struct sockaddr_in* findIPAddress(char *pTunIP, int *pProtocol, int *pConnectionFD) {
+struct sockaddr_in* findIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
@@ -135,8 +136,8 @@ struct sockaddr_in* findIPAddress(char *pTunIP, int *pProtocol, int *pConnection
         return NULL;
     }
 
-    while(strcmp(pTunIP, inet_ntoa(pCurrent->pPeerAddress->sin_addr)) != 0) {
-
+    // Compare the TUN IPs
+    while(strcmp(pTunIP, pCurrent->tunIP) != 0) {
         // Check to see if this was the last node
         if (pCurrent->next == NULL) {
             return NULL;
@@ -146,11 +147,14 @@ struct sockaddr_in* findIPAddress(char *pTunIP, int *pProtocol, int *pConnection
         }
     }
 
-    // Set the protocol type
+    // Found the list entry for this IP. Set the protocol type
     *pProtocol = pCurrent->protocol;
 
     // Set the connection FD
     *pConnectionFD = pCurrent->connectionFD;
+
+    // Set the PIPE FD
+    *pPipeFD = pCurrent->pipeFD;
 
     return(pCurrent->pPeerAddress);
 }

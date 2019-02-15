@@ -12,6 +12,7 @@
 #include <netinet/udp.h>
 #include <stdbool.h>
 #include <getopt.h>
+#include <wait.h>
 #include "debug.h"
 #include "list.h"
 
@@ -221,21 +222,30 @@ int initTCPServer() {
  * Function:            tunSelected()
  *
  * Description:         Received a packet on the TUN.
- *                      Send to the UDP socket (tunnel).
+ *                      Send to the UDP socket (tunnel), or send
+ *                      to the correct PIPE for the TCP child
+ *                      process serving this destination IP
  *
  **************************************************************/
 void tunSelected(int tunFD) {
-    ssize_t len, size;
+
     char buff[BUFF_SIZE];
     struct sockaddr_in destAddr;
     struct sockaddr_in *pPeerAddr;
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
     int protocol;
     int connectionFD;
+    int pipeFD;
+    ssize_t len, size;
 
     bzero(buff, BUFF_SIZE);
     len = read(tunFD, buff, BUFF_SIZE);
 
-    struct iphdr *pIpHeader = (struct iphdr *) buff;
+    if ((len == 0) || (len == -1)) {
+        // Error reading from the TUN. Quit.
+        perror("TUN read error");
+        exit(EXIT_FAILURE);
+    }
 
     // Ignore IPv6 packets
     if (pIpHeader->version == 6) {
@@ -250,7 +260,7 @@ void tunSelected(int tunFD) {
     // Obtain the peerAddress structure for this destination and set
     // the protocol variable so that we can determine which method to
     // use.
-    pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &connectionFD);
+    pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD);
 
     if (printVerboseDebug) {
         printf("TUN->%s Tunnel- Length:- %d\n",
@@ -279,11 +289,13 @@ void tunSelected(int tunFD) {
 
     if (protocol == UDP) {
         // Send the message to the correct peer.
-        size = sendto(connectionFD, buff, len, 0, (struct sockaddr *) pPeerAddr,
+        size = sendto(connectionFD, buff, (size_t) len, 0, (struct sockaddr *) pPeerAddr,
                       sizeof(struct sockaddr));
 
     } else {
-        size = send(connectionFD, buff, len, 0);
+        // TODO - Lookup which Child this needs to go to.
+        // Connection FD for TCP is the PIPE FD.
+        size = write(pipeFD, buff, (size_t) len);
     }
 
     if (size == 0) {
@@ -323,7 +335,7 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
     if (strncmp("Connection Request", buff, 18) == 0) {
         fprintf(stdout, "New UDP client connection from %s:%d. Initialisation Msg:- %s\n",
                 inet_ntoa(pPeerAddr->sin_addr),
-                pPeerAddr->sin_port, buff);
+                ntohs(pPeerAddr->sin_port), buff);
 
         // Determine if this is a reconnection from the same UDP client. If so,
         // we will need to update the port number for the connection
@@ -353,7 +365,8 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
             fprintf(stdout, "************************************************************\n");
 
             // Add the peer address structure to the linked list.
-            insertTail(buff, UDP, pPeerAddr, udpSockFD);
+            // TODO - Fix the 0 here if we decide to spawn a child server for UDP. Otherwise, comment.
+            insertTail(buff, UDP, pPeerAddr, 0, udpSockFD);
         }
 
         // Dont pass the new connection request to the TUN. Just return from the function.
@@ -389,21 +402,190 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
     write(tunFD, buff, (size_t) len);
 }
 
+
 /**************************************************************
  *
- * Function:            tcpSocketSelected()
+ * Function:            readChildPIPE()
  *
- * Description:         Received a packet on the TCP socket (tunnel)
+ * Description:         The TUN (application) is trying to send
+ *                      a packet to the tunnel. Receive the
+ *                      data from the PIPE and send to the
+ *                      tunnel FD
+ **************************************************************/
+void readChildPIPE(int pipeFD, int protocol) {
+
+    char buff[BUFF_SIZE];
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
+    struct sockaddr_in destAddr;
+    struct sockaddr_in *pPeerAddr;
+    ssize_t len, size;
+    int connectionFD;
+
+    // Read the data from the PIPE (TUN)
+    len = read(pipeFD, buff, BUFF_SIZE);
+
+    if (len == 0) {
+        perror("PIPE read error");
+        exit(EXIT_FAILURE);
+    }
+
+    // Ignore IPv6 packets
+    if (pIpHeader->version == 6) {
+        return;
+    }
+
+    // Perform the peer socket address lookup in the linked list
+    // based on the TUN destination address in the buffer.
+    destAddr.sin_addr.s_addr = pIpHeader->daddr;
+    destAddr.sin_family = AF_INET;
+
+    // Obtain the peerAddress structure for this destination and set
+    // the protocol variable so that we can determine which method to
+    // use.
+    pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD);
+
+    // Write the data to the socket
+    if (protocol == UDP) {
+        // TODO - Not currently supported for UDP. Do we make UDP a child subprocess too?
+        printf("Error! Should never reach here - readChildPIPE() for UDP\n");
+        exit(EXIT_FAILURE);
+    } else {
+        // Send the buffer to the TCP socket
+        size = send(connectionFD, buff, (size_t) len, 0);
+
+        if (size == 0) {
+            // Error sending data
+            perror("TCP socket send");
+        }
+    }
+
+}
+
+/**************************************************************
+ *
+ * Function:            readChildTCPSocket()
+ *
+ * Description:         Received a packet on the child TCP socket (tunnel)
  *                      Send to the TUN device (application)
  *
  **************************************************************/
-void tcpSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
+void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAddr) {
+    char buff[BUFF_SIZE];
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
+    ssize_t len;
+
+    len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
+
+    if (len == -1) {
+        perror("Child server TCP recv");
+        exit(EXIT_FAILURE);
+
+    } else if (len == 0) {
+        // Connection has been closed. Kill the connection and
+        // child process
+        // TODO - Add management client logic here for client termination
+        printf("TCP Client %s:%d has closed the connection.\n",
+               inet_ntoa(pPeerAddr->sin_addr),
+               ntohs(pPeerAddr->sin_port));
+
+        if (printVerboseDebug) {
+            printf("Killing Child PID %d - Closing connection FD %d \n", (int) getpid(), connectionFD);
+        }
+
+        close(connectionFD);
+
+        // TODO - Need to delete the linked list entry.
+        exit(EXIT_SUCCESS);
+    }
+
+    // Ignore IPv6 packets
+    if (pIpHeader->version == 6) {
+        return;
+    }
+
+    if (printVerboseDebug) {
+        printf("TCP Tunnel->TUN - Source IP %s:%d - Length %d\n",
+               inet_ntoa(pPeerAddr->sin_addr),
+               (int) ntohs(pPeerAddr->sin_port),
+               (int) len);
+    }
+
+    // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
+    if (printIPHeaders) {
+        if ((unsigned int) pIpHeader->protocol == UDP) {
+            printUDPHeader(buff, (int) len);
+        } else if ((unsigned int) pIpHeader->protocol == TCP) {
+            printTCPHeader(buff, (int) len);
+        } else if ((unsigned int) pIpHeader->protocol == ICMP) {
+            printICMPHeader(buff, (int) len);
+        } else {
+            printIPHeader(buff, (int) len);
+        }
+    }
+
+    // Write the packet to the TUN device.
+    write(tunFD, buff, (size_t) len);
+}
+
+/**************************************************************
+ *
+ * Function:            readChildPIPE()
+ *
+ * Description:         The TUN (application) is trying to send
+ *                      a packet to the tunnel. Receive the
+ *                      data from the PIPE and send to the
+ *                      tunnel FD
+ **************************************************************/
+void childSubProcess(int udpSockFD, int tcpSockFD, int protocol,
+                     struct sockaddr_in *pPeerAddr, int pipeFD[], int connectionFD, int tunFD) {
+
+    // This is the child instance of the server. Close down the TCP
+    // server listener port, UDP port. We will only be concerned with
+    // dealing with this TCP connection from now on.
+    close(udpSockFD);
+    close(tcpSockFD);
+
+    // Close the child write end of the pipe
+    close(pipeFD[1]);
+
+    if (printVerboseDebug) {
+        printf("Spawned child server process PID-%d for connection FD:%d\n", getpid(), connectionFD);
+    }
+
+    // Set up a new loop to listen to the connection FD only. The
+    // parent process will deal with TUN->Tunnel packets.
+    while (1) {
+        fd_set readFDSet;
+
+        FD_ZERO(&readFDSet);
+        FD_SET(connectionFD, &readFDSet);
+        FD_SET(pipeFD[0], &readFDSet);
+
+        select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
+
+        if (FD_ISSET(pipeFD[0], &readFDSet)) readChildPIPE(pipeFD[0], TCP);
+        if (FD_ISSET(connectionFD, &readFDSet)) readChildTCPSocket(tunFD, connectionFD, pPeerAddr);
+    }
+}
+
+/**************************************************************
+ *
+ * Function:            tcpListenerSocketSelected()
+ *
+ * Description:         Received a packet on the TCP socket (tunnel)
+ *                      Allocate a new TUN IP for the client and then
+ *                      spawn a new Child process to handle
+ *                      future data from this connection
+ *
+ **************************************************************/
+void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_in *pPeerAddr;
     struct iphdr *pIpHeader = (struct iphdr *) buff;
     socklen_t addrSize = sizeof(struct sockaddr_in);
     int connectionFD;
+    int pipeFD[2];
     int pid;
 
     // Allocate the memory for the peerAddr structure
@@ -423,7 +605,9 @@ void tcpSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
         return;
     }
 
-    printf("Connection FD for new connection is %d\n", connectionFD);
+    if (printVerboseDebug) {
+        printf("Connection FD for new connection is %d\n", connectionFD);
+    }
 
     bzero(buff, BUFF_SIZE);
     len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
@@ -431,29 +615,26 @@ void tcpSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
     if (len == -1) {
         perror("TCP Rcv error");
         return;
+    } else if (len == 0) {
+        // TODO - Add management client logic here
+        printf("Client %s:%d has closed the connection\n",
+               inet_ntoa(pPeerAddr->sin_addr),
+               pPeerAddr->sin_port);
+
+        close(connectionFD);
+
+        // TODO - Need to delete the linked list entry.
+        return;
     }
 
     // Check if its a new client connection
     if (strncmp("Connection Request", buff, 18) == 0) {
         fprintf(stdout, "New TCP client connection from %s:%d. Initialisation Msg:- %s\n",
                 inet_ntoa(pPeerAddr->sin_addr),
-                pPeerAddr->sin_port, buff);
+                ntohs(pPeerAddr->sin_port), buff);
 
-        // Determine if this is a reconnection from the same client. If so,
-        // we will need to update the port number for the connection
-        if (updatePeerAddress(pPeerAddr, buff) == false) {
-            // Send back to the client a unique IP address.
-            uniqueClientIPAddress(buff);
-        } else {
-            // A reconnection from an existing client. The
-            // function will have reset the original TUN IP address. Do
-            // nothing here.
-
-            if (printVerboseDebug) {
-                printf("Reconnection from TUN IP %s\n", buff);
-                printf("************************************************************\n");
-            }
-        }
+        // Determine and send back to the client a unique IP address.
+        uniqueClientIPAddress(buff);
 
         // Ensure we got a client address
         if (buff[0] != '\0') {
@@ -469,69 +650,44 @@ void tcpSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
             }
 
             fprintf(stdout, "************************************************************\n");
-
-            // Add the peer address structure to the linked list.
-            insertTail(buff, TCP, pPeerAddr, connectionFD);
         }
+
+        // Create a PIPE for communication between parent/child
+        pipe(pipeFD);
+
+        if (printVerboseDebug) {
+            printf("Created PIPE with FDs [%d] and [%d]\n", pipeFD[0], pipeFD[1]);
+        }
+
+        // Add the peer address structure to the linked list and store the pipeFD
+        // so that the parent process can determine which child needs to handle
+        // the TUN->tunnel communication. Also store the socket connectionFD
+        // so that the child process can send the message to the correct connection
+        insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD);
 
         // Fork a new server instance to deal with this TCP connection
         if ((pid = fork()) == 0) {
-            // This is the child instance of the server. Close down the TCP
-            // server listener port, UDP port. We will only be concerned with
-            // dealing with this TCP connection from now on.
-            close(udpSockFD);
-            close(tcpSockFD);
+            // This is the Child process
 
-            if (printVerboseDebug) {
-                printf("Spawned child server process PID-%d\n", getpid());
-            }
+            // Handle the child process sub-function
+            childSubProcess(udpSockFD, tcpSockFD, TCP, pPeerAddr, pipeFD, connectionFD, tunFD);
 
-            // Set up a new loop to listen to the connection FD only. The
-            // parent process will deal with TUN->Tunnel packets.
-            while (1) {
-                len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
+        } else {
+            // This is the Parent process
 
-                if (len == -1) {
-                    perror("Child server TCP recv");
-                    exit(EXIT_FAILURE);
-                } else if (len == 0) {
-                    // Connection has been closed. Kill the connection and
-                    // child process
-                    close(connectionFD);
-                    exit(EXIT_SUCCESS);
-
-                    // TODO - Register and add the sighandler cleanup routing.
-                }
-
-                // Ignore IPv6 packets
-                if (pIpHeader->version == 6) {
-                    return;
-                }
-
-                if (printVerboseDebug) {
-                    printf("TCP Tunnel->TUN - Source IP %s:%d - Length %d\n",
-                           inet_ntoa(pPeerAddr->sin_addr),
-                           (int) ntohs(pPeerAddr->sin_port),
-                           (int) len);
-                }
-
-                // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
-                if (printIPHeaders) {
-                    if ((unsigned int) pIpHeader->protocol == UDP) {
-                        printUDPHeader(buff, (int) len);
-                    } else if ((unsigned int) pIpHeader->protocol == TCP) {
-                        printTCPHeader(buff, (int) len);
-                    } else if ((unsigned int) pIpHeader->protocol == ICMP) {
-                        printICMPHeader(buff, (int) len);
-                    } else {
-                        printIPHeader(buff, (int) len);
-                    }
-                }
-
-                // Write the packet to the TUN device.
-                write(tunFD, buff, (size_t) len);
-            }
+            // Parent does not need the connection FD
+            close(connectionFD);
+            close(pipeFD[0]);
         }
+    } else {
+        // Error. We should only be receiving new connection requests on this socket FD.
+        if (printVerboseDebug) {
+            printf("Error! - Data (not a connection request) received on TCP Listener socket from %s:%d\n",
+                   inet_ntoa(pPeerAddr->sin_addr),
+                   ntohs(pPeerAddr->sin_port));
+        }
+
+        close(connectionFD);
     }
 }
 
@@ -612,6 +768,25 @@ void processCmdLineOptions(int argc, char *argv[]) {
     }
 }
 
+/**************************************************************
+ *
+ * Function:            sigChldHandler()
+ *
+ * Description:         SIGCHLD Handler for cleaning up the
+ *                      terminated child processes.
+ *
+ **************************************************************/
+void sigChldHandler(int sig) {
+
+    printf("SIGCHLD - Entered\n");
+
+    // Wait for the process to finish using the WNOHANG flag
+    // to prevent the handler from blocking.
+    while (waitpid((pid_t) (-1), 0, WNOHANG) > 0) {}
+
+    printf("SIGCHLD - Exit\n");
+}
+
 /*********************************************************************
  *
  * Function:            main()
@@ -624,6 +799,7 @@ void processCmdLineOptions(int argc, char *argv[]) {
  *********************************************************************/
 int main(int argc, char *argv[]) {
 
+    struct sigaction sa;
     int tunFD, udpSockFD, tcpSockFD, retVal;
 
     // Process the user supplied command line options.
@@ -645,10 +821,20 @@ int main(int argc, char *argv[]) {
     tcpSockFD = initTCPServer();
     udpSockFD = initUDPServer();
 
+    // TODO - work out why this stops new processes from connecting after a child death
+    // Register the SIGCHLD handler from reaping child TCP server processes
+//    sa.sa_handler = sigChldHandler;
+//    sigemptyset(&sa.sa_mask);
+//    sa.sa_flags = SA_RESTART;
+//    if(sigaction(SIGCHLD, &sa, NULL) == -1) {
+//        perror("Server sigaction");
+//        exit(EXIT_FAILURE);
+//    }
+
     printf("VPN Server Initialisation Complete.\n");
     printf("************************************************************\n");
 
-    // Enter the main loop
+    // Enter the main server loop
     while (1) {
         fd_set readFDSet;
 
@@ -661,8 +847,7 @@ int main(int argc, char *argv[]) {
 
         if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD);
         if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD);
-        if (FD_ISSET(tcpSockFD, &readFDSet)) tcpSocketSelected(tunFD, tcpSockFD, udpSockFD);
-
+        if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD);
     }
 }
 

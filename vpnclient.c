@@ -14,6 +14,7 @@
 #include "debug.h"
 
 #define BUFF_SIZE 2000
+#define MAX_IP_ADDRESS_LENGTH 16
 
 #define ICMP 1
 #define TCP 6
@@ -150,7 +151,7 @@ int connectToUDPServer() {
     printf("Attempting connection to server\n");
 
     // Wait for the server to assign a unique TUN IP address
-    len = recvfrom(udpSockFD, buff, 16, 0,
+    len = recvfrom(udpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0,
                    (struct sockaddr *) &peerAddr, &saLen);
 
     if (len == -1) {
@@ -230,7 +231,7 @@ int connectToTCPServer() {
     }
 
     // Wait for the server to assign a unique TUN IP address
-    len = recv(tcpSockFD, buff, 16, 0);
+    len = recv(tcpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0);
 
     if (len == -1) {
         // Connection error
@@ -258,16 +259,10 @@ int connectToTCPServer() {
  *                      Send to the UDP or TCP socket (tunnel).
  *
  **************************************************************/
-void tunSelected(int tunFD, int udpSockFD, int tcpSockFD) {
+void tunSelected(int tunFD, int sockFD, int protocol) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
-    int protocol;
 
-    if(strcmp(protocolType, "udp") == 0) {
-        protocol = UDP;
-    } else {
-        protocol = TCP;
-    }
     bzero(buff, BUFF_SIZE);
     len = read(tunFD, buff, BUFF_SIZE);
 
@@ -299,10 +294,10 @@ void tunSelected(int tunFD, int udpSockFD, int tcpSockFD) {
 
     // Use the correct method to send depending on the protocol used.
     if (protocol == UDP) {
-        size = sendto(udpSockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
+        size = sendto(sockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
                       sizeof(peerAddr));
     } else {
-        size = send(tcpSockFD, buff, len, 0);
+        size = send(sockFD, buff, len, 0);
     }
 
     if (size == 0) {
@@ -346,6 +341,7 @@ void socketSelected(int tunFD, int sockFD, int protocol) {
         return;
     } else if (len == 0) {
         // Connection has been closed. Quit.
+        printf("Server has closed the connection\n");
         close(sockFD);
         exit(EXIT_SUCCESS);
     }
@@ -422,7 +418,7 @@ void processCmdLineOptions(int argc, char *argv[]) {
             case 's':
                 // Remote server IP. Copy maximum of 16 characters to prevent
                 // buffer overflow.
-                if (strlen(optarg) <= 16) {
+                if (strlen(optarg) <= MAX_IP_ADDRESS_LENGTH) {
                     sprintf(serverIP, "%s", optarg);
                 }
                 break;
@@ -435,7 +431,7 @@ void processCmdLineOptions(int argc, char *argv[]) {
             case 'n':
                 // Remote Network IP. Copy maximum of 16 characters to prevent
                 // buffer overflow.
-                if (strlen(optarg) <= 16) {
+                if (strlen(optarg) <= MAX_IP_ADDRESS_LENGTH) {
                     sprintf(routeIP, "%s", optarg);
                 }
                 break;
@@ -443,7 +439,7 @@ void processCmdLineOptions(int argc, char *argv[]) {
             case 'm':
                 // Remote Network Netmask. Copy maximum of 16 characters to prevent
                 // buffer overflow.
-                if (strlen(optarg) <= 16) {
+                if (strlen(optarg) <= MAX_IP_ADDRESS_LENGTH) {
                     sprintf(routeNetmask, "%s", optarg);
                 }
                 break;
@@ -518,8 +514,8 @@ void processCmdLineOptions(int argc, char *argv[]) {
  *
  *********************************************************************/
 int main(int argc, char *argv[]) {
-    int tunFD, udpSockFD, tcpSockFD;
-    bool udp = false;
+    int tunFD, sockFD;
+    int protocol;
 
     // Initialise command line argument buffers
     serverIP[0] = '\0';
@@ -534,10 +530,19 @@ int main(int argc, char *argv[]) {
     printf("************************************************************\n");
     printf("VPN Client Initialisation:\n");
 
+    // Set a local value for the protocol type so we do not have
+    // to keep doing an expensive string compare.
     if (strcmp(protocolType, "udp") == 0) {
-        udpSockFD = connectToUDPServer();
+        protocol = UDP;
     } else {
-        tcpSockFD = connectToTCPServer();
+        protocol = TCP;
+    }
+
+    // Client can be either UDP or TCP, start the correct connection
+    if (protocol == UDP ) {
+        sockFD = connectToUDPServer();
+    } else {
+        sockFD = connectToTCPServer();
     }
 
     tunFD = createTunDevice();
@@ -545,32 +550,31 @@ int main(int argc, char *argv[]) {
     printf("VPN Client Initialisation Complete.\n");
     printf("************************************************************\n");
 
-    // Set a local boolean for the protocol type so we do not have
-    // to keep doing an expensive string compare.
-    if (strcmp(protocolType, "udp") == 0) {
-        udp = true;
-    }
+    // TODO - Add a SIGINT handler so we can gracefully close down the UDP 'connection' to the server and remove the connection info.
+
     // Enter the main loop
     while (1) {
         fd_set readFDSet;
 
         FD_ZERO(&readFDSet);
 
-        if (udp) {
-            FD_SET(udpSockFD, &readFDSet);
+        // Client can only be either UDP or TCP. Insert the correct
+        if (protocol == UDP) {
+            FD_SET(sockFD, &readFDSet);
         } else {
-            FD_SET(tcpSockFD, &readFDSet);
+            FD_SET(sockFD, &readFDSet);
         }
 
         FD_SET(tunFD, &readFDSet);
 
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
 
-        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, udpSockFD, tcpSockFD);
-        if (udp) {
-            if (FD_ISSET(udpSockFD, &readFDSet)) socketSelected(tunFD, udpSockFD, UDP);
+        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, sockFD, protocol);
+
+        if (protocol == UDP) {
+            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, UDP);
         } else {
-            if (FD_ISSET(tcpSockFD, &readFDSet)) socketSelected(tunFD, tcpSockFD, TCP);
+            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, TCP);
         }
     }
 }
