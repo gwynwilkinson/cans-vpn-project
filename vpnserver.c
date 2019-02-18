@@ -163,11 +163,15 @@ int initUDPServer() {
  *
  * Function:            initTCPServer()
  *
- * Description:         Initialises the TCP server listener on
- *                      the Local TCP server port.
+ * Description:         Initialises a  TCP server listener on
+ *                      the given port.
+ *
+ *                      This function is reused for the main TCP
+ *                      tunnel server listener, and also for the
+ *                      mgmt client interface.
  *
  **************************************************************/
-int initTCPServer() {
+int initTCPServer(int portNumber) {
 
     struct sockaddr_in server;
     struct sockaddr_in localAddr;
@@ -193,7 +197,7 @@ int initTCPServer() {
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = htonl(INADDR_ANY);
-    server.sin_port = htons(tcpPortNumber);
+    server.sin_port = htons(portNumber);
 
     // Bind to the socket
     bind(tcpSockFD, (struct sockaddr *) &server, sizeof(server));
@@ -519,21 +523,21 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
 
 /**************************************************************
  *
- * Function:            readChildPIPE()
+ * Function:            vpnChildSubProcess()
  *
- * Description:         The TUN (application) is trying to send
- *                      a packet to the tunnel. Receive the
- *                      data from the PIPE and send to the
- *                      tunnel FD
+ * Description:         Subroutine to handle the main loop for the
+ *                      VPN TCP socket child process.
+ *
  **************************************************************/
-void childSubProcess(int udpSockFD, int tcpSockFD, struct sockaddr_in *pPeerAddr,
-                     int pipeFD[], int connectionFD, int tunFD) {
+void vpnChildSubProcess(int udpSockFD, int tcpSockFD, int mgmtSockFD, struct sockaddr_in *pPeerAddr,
+                        int pipeFD[], int connectionFD, int tunFD) {
 
     // This is the child instance of the server. Close down the TCP
     // server listener port, UDP port. We will only be concerned with
     // dealing with this TCP connection from now on.
     close(udpSockFD);
     close(tcpSockFD);
+    close(mgmtSockFD);
 
     // Close the child write end of the pipe
     close(pipeFD[1]);
@@ -568,7 +572,7 @@ void childSubProcess(int udpSockFD, int tcpSockFD, struct sockaddr_in *pPeerAddr
  *                      future data from this connection
  *
  **************************************************************/
-void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
+void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtSockFD) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_in *pPeerAddr;
@@ -660,7 +664,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
             // This is the Child process
 
             // Handle the child process sub-function
-            childSubProcess(udpSockFD, tcpSockFD, pPeerAddr, pipeFD, connectionFD, tunFD);
+            vpnChildSubProcess(udpSockFD, tcpSockFD, mgmtSockFD, pPeerAddr, pipeFD, connectionFD, tunFD);
 
         } else {
             // This is the Parent process
@@ -681,6 +685,161 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD) {
     }
 }
 
+
+/**************************************************************
+ *
+ * Function:            mgmtChildSubProcess()
+ *
+ * Description:         Subroutine to handle the main loop for the
+ *                      Management socket child process.
+ *
+ **************************************************************/
+void mgmtChildSubProcess(int udpSockFD, int tcpSockFD, int mgmtSockFD, struct sockaddr_in *pPeerAddr,
+                         int connectionFD, int tunFD) {
+
+    ssize_t len;
+    char buff[BUFF_SIZE];
+
+    bzero(buff, BUFF_SIZE);
+
+
+    // This is the process that will handle only the mgmt client traffic.
+    // Close all other sockets
+    close(udpSockFD);
+    close(tcpSockFD);
+    close(mgmtSockFD);
+    close(tunFD);
+
+    if (printVerboseDebug) {
+        printf("Spawned child process PID-%d for management client connection FD:%d\n", getpid(), connectionFD);
+    }
+
+    // Set up a new loop to listen to the management connection FD only. The
+    // parent process will deal with all other traffic. Can be a blocking read as
+    // we are dealing with only the single connection
+    while (1) {
+
+        len = read(connectionFD, buff, BUFF_SIZE);
+
+        if(len == 0) {
+            // Connection has been closed. Close the port and kill the process
+            close(connectionFD);
+            exit(EXIT_SUCCESS);
+        } else if (len == -1) {
+            // Read error. Quit.
+            perror("Mgmt Client Read Error");
+            exit(EXIT_FAILURE);
+        } else {
+            // Handle the request
+            // TODO - something useful
+            printf("Received \"%s\" from Mgmt Client\n", buff);
+        }
+    }
+}
+
+/*********************************************************************
+ *
+ * Function:            mgmtClientSocketSelected()
+ *
+ * Description:         Accept the management client connection and
+ *                      fork a server process instance to deal with the
+ *                      communication.
+ *
+ *********************************************************************/
+void mgmtClientSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtSockFD) {
+    ssize_t len;
+    char buff[BUFF_SIZE];
+    struct sockaddr_in *pPeerAddr;
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
+    socklen_t addrSize = sizeof(struct sockaddr_in);
+    int connectionFD;
+    int pid;
+
+    // Allocate the memory for the peerAddr structure
+    pPeerAddr = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
+
+    // Verify the memory was allocated
+    if (pPeerAddr == NULL) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    // Accept the new incoming connection
+    connectionFD = accept(mgmtSockFD, (struct sockaddr *) pPeerAddr, &addrSize);
+
+    if (connectionFD == -1) {
+        perror("Error accepting TCP connection");
+        return;
+    }
+
+    if (printVerboseDebug) {
+        printf("Connection FD for new management client connection is %d\n", connectionFD);
+    }
+
+    bzero(buff, BUFF_SIZE);
+    len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
+
+    if (len == -1) {
+        perror("TCP Rcv error");
+        return;
+    } else if (len == 0) {
+        printf("Management Client %s:%d has closed the connection\n",
+               inet_ntoa(pPeerAddr->sin_addr),
+               pPeerAddr->sin_port);
+
+        close(connectionFD);
+        return;
+    }
+
+    // Check if its a new client connection
+    if (strncmp("MGMT Connection Request", buff, 18) == 0) {
+        fprintf(stdout, "New Management client connection from %s:%d. Initialisation Msg:- %s\n",
+                inet_ntoa(pPeerAddr->sin_addr),
+                ntohs(pPeerAddr->sin_port), buff);
+
+        // TODO - Do something useful here.
+        strcpy(buff, "CONNECTED!!!");
+
+        // Ensure we got a client address
+        if (buff[0] != '\0') {
+            len = send(connectionFD, buff, strlen(buff), 0);
+
+            if (len == -1) {
+                perror("TCP Send error");
+                return;
+            }
+
+            if (printVerboseDebug) {
+                printf("Connected to client\n");
+            }
+
+            fprintf(stdout, "************************************************************\n");
+        }
+
+        // Fork a new server instance to deal with this TCP connection
+        if ((pid = fork()) == 0) {
+
+            // Handle the child process sub-function
+            mgmtChildSubProcess(udpSockFD, tcpSockFD, mgmtSockFD, pPeerAddr, connectionFD, tunFD);
+
+        } else {
+            // This is the Parent process
+
+            // Parent does not need the connection FD
+            close(connectionFD);
+        }
+    } else {
+        // Error. We should only be receiving new connection requests on this socket FD.
+        if (printVerboseDebug) {
+            printf("Error! - Data (not a connection request) received on Management Listener socket from %s:%d\n",
+                   inet_ntoa(pPeerAddr->sin_addr),
+                   ntohs(pPeerAddr->sin_port));
+        }
+
+        close(connectionFD);
+    }
+
+}
 
 /**************************************************************
  *
@@ -790,7 +949,7 @@ void sigChldHandler(int sig) {
 int main(int argc, char *argv[]) {
 
     struct sigaction sa;
-    int tunFD, udpSockFD, tcpSockFD, retVal;
+    int tunFD, udpSockFD, tcpSockFD, mgmtSockFD, retVal;
 
     // Process the user supplied command line options.
     processCmdLineOptions(argc, argv);
@@ -808,8 +967,13 @@ int main(int argc, char *argv[]) {
     }
 
     tunFD = createTunDevice();
-    tcpSockFD = initTCPServer();
+    printf("Configuring VPN TCP Listener\n");
+    tcpSockFD = initTCPServer(tcpPortNumber);
     udpSockFD = initUDPServer();
+
+    // Create a socket for the Management Client connection.
+    printf("Configuring Management Client Listener\n");
+    mgmtSockFD = initTCPServer(33333);
 
     // TODO - work out why this stops new processes from connecting after a child death
     // Register the SIGCHLD handler from reaping child TCP server processes
@@ -831,13 +995,17 @@ int main(int argc, char *argv[]) {
         FD_ZERO(&readFDSet);
         FD_SET(udpSockFD, &readFDSet);
         FD_SET(tcpSockFD, &readFDSet);
+        FD_SET(mgmtSockFD, &readFDSet);
+
         FD_SET(tunFD, &readFDSet);
 
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
 
         if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD);
         if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD);
-        if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD);
+        if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD);
+        if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD);
+
     }
 }
 

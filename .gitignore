@@ -1,5 +1,7 @@
 vpnclient
 vpnserver
+vpnmanager
+a.out
 *~
 *.o
 .idea
