@@ -1,9 +1,9 @@
-#include <ncurses.h>
 #include <stdlib.h>
-#include <menu.h>
 #include <memory.h>
 #include <arpa/inet.h>
 #include <json-c/json.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include "vpnmanager.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
@@ -249,9 +249,9 @@ void displayCurrentConnections(int mgmtSockFD) {
         printf(" RemoteIPAddress:\t%s:%d\n", json_object_get_string(jStringRemoteIPAddress), json_object_get_int(jIntRemoteIPPort));
         printf(" TimeOfConnection:\t%s\n", json_object_get_string(jStringTimeConnected));
         printf(" Protocol:\t\t%s\n", (json_object_get_int(jIntProtocol) == UDP) ? "UDP" : "TCP");
-        printf(" RemoteTunIP:\t\t%s\n", json_object_get_string(jStringRemoteTUNIPAddress));
+        printf(" RemoteTunIP:\t\t%s\n\n", json_object_get_string(jStringRemoteTUNIPAddress));
     }
 
-    printf("\n--------------------------------------------------------------------------------\n");
+    printf("--------------------------------------------------------------------------------\n");
 
 }
