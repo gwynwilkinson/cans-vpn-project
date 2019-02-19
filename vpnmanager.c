@@ -2,158 +2,256 @@
 #include <stdlib.h>
 #include <menu.h>
 #include <memory.h>
+#include <arpa/inet.h>
+#include <json-c/json.h>
+#include "vpnmanager.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+#define SERVER_PORT 33333
+#define SERVER_IP "127.0.0.1"
+#define EXIT_PROGRAM 99
+#define BUFF_SIZE 2000
+#define TCP 6
+#define UDP 17
 
-char *choices[] = {
-        "Display Current Connections",
-        "???",
-        "Profit!!",
-        "Exit",
-        (char *) NULL,
-};
+bool printVerboseDebug=false;
 
-void printInMiddle(WINDOW *win, int starty, int startx, int width, char *string, chtype color);
-
-void func(char *name);
-
+/**************************************************************
+ *
+ * Function:            main()
+ *
+ * Description:         Main program loop
+ *
+ **************************************************************/
 int main(int argc, char *argv[]) {
-    ITEM **my_items;
-    int c;
-    MENU *mainMenu;
-    WINDOW *mainWindow;
-    int numChoices, i;
-    int width, height;
-    int boxHeight, boxWidth;
 
-    char helpText1[] = "Press <ENTER> to see the option selected";
-    char helpText2[] = "Up and Down arrow keys to naviage (F1 to Exit)";
+    int menuOption = 0;
+    int mgmtSockFD;
 
-    /* Initialize curses */
-    initscr();
-    start_color();
-    cbreak();
-    noecho();
-    keypad(stdscr, TRUE);
-    init_pair(1, COLOR_BLUE, COLOR_BLACK);
-    init_pair(2, COLOR_GREEN, COLOR_BLACK);
-    init_pair(3, COLOR_MAGENTA, COLOR_BLACK);
-    init_pair(4, COLOR_WHITE, COLOR_BLACK);
+    // Connect to the Server.
+    mgmtSockFD = connectToTCPServer();
 
-    getmaxyx(stdscr, height, width);
-    boxHeight = (height / 3) * 2;
-    boxWidth = (width / 3) * 2;
+    // Main Menu loop
+    while (menuOption != EXIT_PROGRAM) {
 
-    /* Create items */
-    numChoices = ARRAY_SIZE(choices);
-    my_items = (ITEM **) calloc(numChoices, sizeof(ITEM *));
-    for (i = 0; i < numChoices; ++i) {
-        my_items[i] = new_item(choices[i], "");
-        /* Set the user pointer */
-        set_item_userptr(my_items[i], func);
-    }
+        // Display the menu
+        menuOption = displayMainMenu();
 
-    /* Create menu */
-    mainMenu = new_menu((ITEM **) my_items);
-
-    /* Create the window to be associated with the menu */
-    mainWindow = newwin(boxHeight, boxWidth, height / 2 - (boxHeight / 2), width / 2 - (boxWidth / 2));
-    keypad(mainWindow, TRUE);
-
-    /* Set main window and sub window */
-    set_menu_win(mainMenu, mainWindow);
-    set_menu_sub(mainMenu, derwin(mainWindow, 6, 38, ((boxHeight - 4) / 2), ((boxWidth - 2) / 2) - 19));
-    set_menu_format(mainMenu, 5, 1);
-
-    /* Set menu mark to the string " * " */
-    set_menu_mark(mainMenu, " * ");
-
-    /* Print a border around the main window and print a title */
-    box(mainWindow, 0, 0);
-    printInMiddle(mainWindow, 1, 0, boxWidth, "VPN Menu", COLOR_PAIR(1));
-    mvwaddch(mainWindow, 2, 0, ACS_LTEE);
-    mvwhline(mainWindow, 2, 1, ACS_HLINE, boxWidth - 2);
-    mvwaddch(mainWindow, 2, boxWidth - 1, ACS_RTEE);
-
-    /* Post the menu */
-    post_menu(mainMenu);
-    wrefresh(mainWindow);
-
-    printInMiddle(stdscr, LINES - 3, 0, width, helpText1, COLOR_PAIR(1));
-    printInMiddle(stdscr, LINES - 2, 0, width, helpText2, COLOR_PAIR(1));
-
-    refresh();
-
-    while ((c = wgetch(mainWindow)) != KEY_F(1)) {
-        switch (c) {
-            case KEY_DOWN:
-                menu_driver(mainMenu, REQ_DOWN_ITEM);
+        switch (menuOption) {
+            case 1:
+                displayCurrentConnections(mgmtSockFD);
                 break;
-            case KEY_UP:
-                menu_driver(mainMenu, REQ_UP_ITEM);
+            case 2:
                 break;
-            case 10: /* Enter */
-            {
-                ITEM *cur;
-                void (*p)(char *);
-
-                cur = current_item(mainMenu);
-                p = item_userptr(cur);
-                p((char *) item_name(cur));
-                pos_menu_cursor(mainMenu);
+            case 3:
                 break;
-            }
-
+            case 50:
+                printVerboseDebug ^= 1;
+                break;
             default:
                 break;
         }
-
-        wrefresh(mainWindow);
     }
-
-    /* Unpost and free all the memory taken up */
-    unpost_menu(mainMenu);
-    free_menu(mainMenu);
-
-    for (i = 0; i < numChoices; ++i) {
-        free_item(my_items[i]);
-    }
-
-    endwin();
 }
 
-void printInMiddle(WINDOW *win, int starty, int startx, int width, char *string, chtype color) {
-    int length, x, y;
-    float temp;
+/**************************************************************
+ *
+ * Function:            connectToTCPServer()
+ *
+ * Description:         Creates the TCP socket connection to the
+ *                      remote VPN server on the management port
+ *
+ **************************************************************/
+int connectToTCPServer() {
 
-    if (win == NULL)
-        win = stdscr;
-    getyx(win, y, x);
-    if (startx != 0)
-        x = startx;
-    if (starty != 0)
-        y = starty;
-    if (width == 0)
-        width = 80;
+    struct sockaddr_in peerAddr;
+    struct sockaddr_in localAddr;
+    int mgmtSockFD;
+    char *hello = "MGMT Connection Request";
+    socklen_t saLen;
+    ssize_t len;
+    char buff[17];
 
-    length = strlen(string);
-    temp = (width - length) / 2;
-    x = startx + (int) temp;
-    wattron(win, color);
-    mvwprintw(win, y, x, "%s", string);
-    wattroff(win, color);
-    refresh();
+    // Create the peer socket address (Internet) structure.
+    memset(&peerAddr, 0, sizeof(peerAddr));
+    peerAddr.sin_family = AF_INET;
+    peerAddr.sin_port = htons(SERVER_PORT);
+    peerAddr.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+    mgmtSockFD = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (mgmtSockFD == 0) {
+        perror("TCP Socket Allocation");
+        exit(EXIT_FAILURE);
+    }
+
+    // Obtain the local socket address information
+    saLen = sizeof(localAddr);
+
+    // Send a server connection request message to "connect" with the VPN server
+    if (connect(mgmtSockFD, (struct sockaddr *) &peerAddr, sizeof(peerAddr)) == -1) {
+        printf("\nServer is not running. Ensure server is running on the localhost before starting the manager\n\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Get some info about the local socket
+    if (getsockname(mgmtSockFD, (struct sockaddr *) &localAddr, &saLen) == -1) {
+        perror("getsockname");
+        exit(EXIT_FAILURE);
+    }
+
+    if(printVerboseDebug) {
+        printf("Opened TCP socket. FD = %d. Bound to IP = %s:%d\n",
+               mgmtSockFD,
+               inet_ntoa(localAddr.sin_addr),
+               (int) ntohs(localAddr.sin_port));
+    }
+
+    // Send the connection request to the server
+    len = send(mgmtSockFD, hello, strlen(hello), 0);
+
+    if (len == -1) {
+        // Connection error
+        perror("TCP Connection Error");
+        exit(EXIT_FAILURE);
+    } else if (len == 0) {
+        printf("Connection Closed\n");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Connected to server\n");
+
+    return mgmtSockFD;
+
 }
 
-void func(char *name) {
+/**************************************************************
+ *
+ * Function:            displayMainMenu()
+ *
+ * Description:         Print the main menu and handle input
+ *
+ **************************************************************/
+int displayMainMenu() {
 
-    move(LINES - 5, 0);
-    clrtoeol();
+    int menuOption;
+    int status = 0;
+    int temp;
 
-    char buffer[255];
+    printf("\n VPN Management Main Menu\n");
+    printf(" ========================\n\n");
+    printf("  1 - Display current connections\n");
+    printf("  2 - Terminate a connection\n");
+    printf("  3 - ?????\n\n");
+    printf(" 99 - Exit Program\n\n");
+    printf(" Please enter an option between 1-3, or 99 to exit:- ");
 
-    sprintf(buffer, "Item selected is : %s", name);
+    status = scanf("%d", &menuOption);
 
-    printInMiddle(stdscr, LINES - 5, 0, getmaxx(stdscr), buffer, COLOR_PAIR(4));
-    refresh();
+    // Handle any input error
+    while ((status != 1) || ((menuOption < 1) || ((menuOption > 3) &&
+                                                  ((menuOption != 99) && (menuOption != 50))))) {
+        while ((temp = getchar()) != EOF && temp != '\n');
+        printf("Invalid Input. Please enter an option between 1-3, 99 to exit:- ");
+        status = scanf("%d", &menuOption);
+    }
+
+    fflush(stdin);
+
+    return (menuOption);
+}
+
+/**************************************************************
+ *
+ * Function:            displayCurrentConnections()
+ *
+ * Description:         Print the main menu and handle input
+ *
+ **************************************************************/
+void displayCurrentConnections(int mgmtSockFD) {
+
+
+    char request[] = "Current Connections";
+    char buff[BUFF_SIZE];
+    json_object *jParsedJson;
+    json_object *jConnections;
+    json_object *jLoopObject;
+    ssize_t len, numConnections;
+    int i;
+
+    // Send the connection request to the server
+    len = send(mgmtSockFD, request, strlen(request), 0);
+
+    if (len == -1) {
+        // Connection error
+        perror("TCP Connection Error");
+        exit(EXIT_FAILURE);
+    } else if (len == 0) {
+        printf("Connection Closed\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Wait for the server to respond with the JSON data
+    len = recv(mgmtSockFD, buff, BUFF_SIZE, 0);
+
+    if (len == -1) {
+        // Connection error
+        perror("MGMT Client TCP Connection Error");
+        exit(EXIT_FAILURE);
+    } else if(len == 0){
+        printf("Server Terminted\n");
+        exit(EXIT_SUCCESS);
+    }
+
+    buff[len] = '\0';
+
+    printf("--------------------------------------------------------------------------------\n");
+
+    printf("\n VPN Connection Status\n");
+    printf(" =====================\n\n");
+
+    if(printVerboseDebug) {
+        printf("\nCurrent Connection response: %s\n\n", buff);
+    }
+
+    // Parse the JSON buffer
+    jParsedJson = json_tokener_parse(buff);
+
+    // Get the connections array
+    json_object_object_get_ex(jParsedJson, "Connections", &jConnections);
+
+    // Determine array length
+    numConnections = json_object_array_length(jConnections);
+
+    if(numConnections == 0) {
+        printf(" No clients connected\n");
+    }
+
+    // Loop through the array
+    for(i = 0; i < numConnections; i++) {
+        json_object *jStringRemoteIPAddress;
+        json_object *jIntRemoteIPPort;
+        json_object *jStringTimeConnected;
+        json_object *jIntProtocol;
+        json_object *jStringRemoteTUNIPAddress;
+
+
+        jLoopObject = json_object_array_get_idx(jConnections, i);
+
+        json_object_object_get_ex(jLoopObject, "remoteIP", &jStringRemoteIPAddress);
+        json_object_object_get_ex(jLoopObject, "remotePort", &jIntRemoteIPPort);
+        json_object_object_get_ex(jLoopObject, "timeOfConnection", &jStringTimeConnected);
+        json_object_object_get_ex(jLoopObject, "protocol", &jIntProtocol);
+        json_object_object_get_ex(jLoopObject, "remoteTunIP", &jStringRemoteTUNIPAddress);
+
+        printf(" Connection Index: %d\n", i);
+        printf(" ====================\n");
+        printf(" RemoteIPAddress:\t%s:%d\n", json_object_get_string(jStringRemoteIPAddress), json_object_get_int(jIntRemoteIPPort));
+        printf(" TimeOfConnection:\t%s\n", json_object_get_string(jStringTimeConnected));
+        printf(" Protocol:\t\t%s\n", (json_object_get_int(jIntProtocol) == UDP) ? "UDP" : "TCP");
+        printf(" RemoteTunIP:\t\t%s\n", json_object_get_string(jStringRemoteTUNIPAddress));
+    }
+
+    printf("\n--------------------------------------------------------------------------------\n");
+
 }

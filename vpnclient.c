@@ -176,7 +176,7 @@ int connectToUDPServer() {
  *
  * Function:            connectToTCPServer()
  *
- * Description:         Creates the UDP socket connection to the
+ * Description:         Creates the TCP socket connection to the
  *                      remote VPN server on specified port
  *
  **************************************************************/

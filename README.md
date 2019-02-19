@@ -1,28 +1,41 @@
 *************************************************
-* vpnserver.c vpn server program via UDP  
-* vpnclient.c vpn client program via UDP 
+* vpnserver.c vpn server program via UDP or TCP  
+* vpnclient.c vpn client program via UDP or TCP
 ************************************************
 
 --------------------------
-To compile the compile: 
+Clone the repository
 --------------------------
-$ make 
 
+    git clone https://gitlab.uwe.ac.uk/jd6-white/CANS-VPN-Project.git
+    
+--------------------------
+Install the pre-requisites
+--------------------------
+The VPN Management Client and Server programs interchange data using a JSON formatted structure. As such, the libjson-c development libraries are required to be installed.
+
+    sudo apt install libjson-c-dev
+    
+--------------------------
+To compile the program: 
+--------------------------
+    $ make 
 
 --------------------------
 To run the server: 
 --------------------------
-$ sudo ./vpnserver
-
+    $ sudo ./vpnserver
 
 --------------------------
 To run the client: 
 --------------------------
 
-First change the SERVER_IP in vpnclient.c to match with the server's ip.  
-$ sudo ./vpnclient
+    $ sudo ./vpnclient
 
-TUN interfaces should be auto configured 
+--------------------------
+To run the management client: 
+--------------------------
 
-client - 10.4.2.99/24
-server - 10.4.2.5/24
+The VPN manager should be run on the same host as vpn server.
+
+    $ ./vpnmanager

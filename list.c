@@ -3,6 +3,7 @@
 #include <string.h>
 #include <netinet/ip.h>
 #include <arpa/inet.h>
+#include <time.h>
 #include "list.h"
 #include "vpnserver.h"
 #include "sock.h"
@@ -25,6 +26,9 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
         perror("malloc");
         exit(EXIT_FAILURE);
     }
+
+    // Log the connection start time.
+    getDateTime(pNewEntry->connectionStartTime);
 
     strcpy(pNewEntry->tunIP, pTunIP);
     pNewEntry->protocol = protocol;
@@ -197,4 +201,23 @@ bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]) {
     pCurrent->pPeerAddress = pNewPeerAddress;
     strcpy(pTunIP,pCurrent->tunIP);
     return true;
+}
+
+/**************************************************************
+ *
+ * Function:            getDateTime()
+ *
+ * Description:         Converts the current time into a string
+ *                      of format "%d/%m/%Y - %H:%M:%S"
+ *
+ **************************************************************/
+void getDateTime(char pTimeString[]) {
+
+    time_t current_time;
+    struct tm *time_info;
+
+    time(&current_time);
+    time_info = localtime(&current_time);
+
+    strftime(pTimeString, sizeof(char) * 22, "%d/%m/%Y - %H:%M:%S", time_info);
 }

@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-g
-LDLIBS=-lncurses -lmenu
+LDLIBS=-ljson-c
 DEPS = *h
 SERVER_OBJ = list.o sock.o
 COMMON_OBJ = debug.o

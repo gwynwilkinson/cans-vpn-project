@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <getopt.h>
 #include <wait.h>
+#include <json-c/json.h>
 #include "debug.h"
 #include "list.h"
 
@@ -45,6 +46,8 @@ struct listEntry *pHead = NULL;
 
 // Array storing assigned client IP addresses in the range 10.4.0.x
 bool clientIPAddress[MAX_CLIENTS] = {false};
+
+int mgmtConnectionFD = 0;
 
 /***************************************************************
  *
@@ -261,9 +264,9 @@ void tunSelected(int tunFD) {
     destAddr.sin_addr.s_addr = pIpHeader->daddr;
     destAddr.sin_family = AF_INET;
 
-    // Obtain the peerAddress structure for this destination and set
-    // the protocol variable so that we can determine which method to
-    // use.
+    // Obtain the peerAddress structure (Used for UDP) and the PIPE FD (Used for TCP)
+    // for this destination and set the protocol variable so that we can determine which method to
+    // use laster.
     pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD);
 
     if (printVerboseDebug) {
@@ -297,7 +300,6 @@ void tunSelected(int tunFD) {
                       sizeof(struct sockaddr));
 
     } else {
-        // TODO - Lookup which Child this needs to go to.
         // Connection FD for TCP is the PIPE FD.
         size = write(pipeFD, buff, (size_t) len);
     }
@@ -369,7 +371,7 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
             fprintf(stdout, "************************************************************\n");
 
             // Add the peer address structure to the linked list.
-            // TODO - Fix the 0 here if we decide to spawn a child server for UDP. Otherwise, comment.
+            // 0 is used for the PIPE FD as this is unused for UDP connections
             insertTail(buff, UDP, pPeerAddr, 0, udpSockFD);
         }
 
@@ -688,65 +690,99 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
 
 /**************************************************************
  *
- * Function:            mgmtChildSubProcess()
+ * Function:            mgmtClientSocket()
  *
  * Description:         Subroutine to handle the main loop for the
- *                      Management socket child process.
+ *                      Management client once it has connected.
  *
  **************************************************************/
-void mgmtChildSubProcess(int udpSockFD, int tcpSockFD, int mgmtSockFD, struct sockaddr_in *pPeerAddr,
-                         int connectionFD, int tunFD) {
+void mgmtClientSocket( int connectionFD) {
 
     ssize_t len;
     char buff[BUFF_SIZE];
-
     bzero(buff, BUFF_SIZE);
 
+    len = read(connectionFD, buff, BUFF_SIZE);
 
-    // This is the process that will handle only the mgmt client traffic.
-    // Close all other sockets
-    close(udpSockFD);
-    close(tcpSockFD);
-    close(mgmtSockFD);
-    close(tunFD);
+    if ((len == 0) || (len == -1)) {
+        // Connection has been closed. Close the port and kill the process
+        printf("Management Client has terminated\n");
 
-    if (printVerboseDebug) {
-        printf("Spawned child process PID-%d for management client connection FD:%d\n", getpid(), connectionFD);
+        // Clear the FD for the connection socket.
+        mgmtConnectionFD = 0;
+        close(connectionFD);
+        return;
     }
 
-    // Set up a new loop to listen to the management connection FD only. The
-    // parent process will deal with all other traffic. Can be a blocking read as
-    // we are dealing with only the single connection
-    while (1) {
+    // Handle the request
+    if (printVerboseDebug) {
+        printf("Mgmt Client requested:- \"%s\"\n", buff);
+    }
 
-        len = read(connectionFD, buff, BUFF_SIZE);
+    // Check what the Management Client requested,
+    if (strcmp(buff, "Current Connections") == 0) {
+        // Request for Current Connection Information
 
-        if(len == 0) {
-            // Connection has been closed. Close the port and kill the process
-            close(connectionFD);
-            exit(EXIT_SUCCESS);
-        } else if (len == -1) {
-            // Read error. Quit.
-            perror("Mgmt Client Read Error");
-            exit(EXIT_FAILURE);
-        } else {
-            // Handle the request
-            // TODO - something useful
-            printf("Received \"%s\" from Mgmt Client\n", buff);
+        json_object *jObject = json_object_new_object();
+        json_object *jArray = json_object_new_array();
+
+        // Start looking for an entries from the head of the list
+        struct listEntry *pCurrent = pHead;
+
+        while (pCurrent != NULL) {
+            json_object *jLoopObject = json_object_new_object();
+
+            json_object *jStringRemoteIPAddress = json_object_new_string(inet_ntoa(pCurrent->pPeerAddress->sin_addr));
+            json_object *jIntRemoteIPPort = json_object_new_int(ntohs(pCurrent->pPeerAddress->sin_port));
+            json_object *jStringTimeConnected = json_object_new_string(pCurrent->connectionStartTime);
+            json_object *jIntProtocol = json_object_new_int(pCurrent->protocol);
+            json_object *jStringRemoteTUNIPAddress = json_object_new_string(pCurrent->tunIP);
+
+            json_object_object_add(jLoopObject, "remoteIP", jStringRemoteIPAddress);
+            json_object_object_add(jLoopObject, "remotePort", jIntRemoteIPPort);
+            json_object_object_add(jLoopObject, "timeOfConnection", jStringTimeConnected);
+            json_object_object_add(jLoopObject, "protocol", jIntProtocol);
+            json_object_object_add(jLoopObject, "remoteTunIP", jStringRemoteTUNIPAddress);
+
+            // Add the object to the array
+            json_object_array_add(jArray, jLoopObject);
+
+            // Move to the next entry
+            pCurrent = pCurrent->next;
         }
+
+        // Add the array to the main JSON object
+        json_object_object_add(jObject, "Connections", jArray);
+
+        if(printVerboseDebug) {
+            printf("The JSON object created: %s\n", json_object_to_json_string(jObject));
+        }
+
+        strcpy(buff, json_object_to_json_string(jObject));
+
+        // Send the data back to the manager
+        len = send(connectionFD, buff, sizeof(buff), 0);
+
+        if (len == 0) {
+            // Error sending data
+            perror("TCP socket send");
+        }
+
+    } else {
+        printf("UNKNOWN REQUEST %s\n", buff);
     }
 }
 
 /*********************************************************************
  *
- * Function:            mgmtClientSocketSelected()
+ * Function:            mgmtClientListenerSelected()
  *
  * Description:         Accept the management client connection and
  *                      fork a server process instance to deal with the
  *                      communication.
  *
  *********************************************************************/
-void mgmtClientSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtSockFD) {
+void mgmtClientListenerSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtSockFD) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_in *pPeerAddr;
@@ -785,7 +821,7 @@ void mgmtClientSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtS
     } else if (len == 0) {
         printf("Management Client %s:%d has closed the connection\n",
                inet_ntoa(pPeerAddr->sin_addr),
-               pPeerAddr->sin_port);
+               ntohs(pPeerAddr->sin_port));
 
         close(connectionFD);
         return;
@@ -797,37 +833,7 @@ void mgmtClientSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtS
                 inet_ntoa(pPeerAddr->sin_addr),
                 ntohs(pPeerAddr->sin_port), buff);
 
-        // TODO - Do something useful here.
-        strcpy(buff, "CONNECTED!!!");
-
-        // Ensure we got a client address
-        if (buff[0] != '\0') {
-            len = send(connectionFD, buff, strlen(buff), 0);
-
-            if (len == -1) {
-                perror("TCP Send error");
-                return;
-            }
-
-            if (printVerboseDebug) {
-                printf("Connected to client\n");
-            }
-
-            fprintf(stdout, "************************************************************\n");
-        }
-
-        // Fork a new server instance to deal with this TCP connection
-        if ((pid = fork()) == 0) {
-
-            // Handle the child process sub-function
-            mgmtChildSubProcess(udpSockFD, tcpSockFD, mgmtSockFD, pPeerAddr, connectionFD, tunFD);
-
-        } else {
-            // This is the Parent process
-
-            // Parent does not need the connection FD
-            close(connectionFD);
-        }
+        // TODO - something here or not?
     } else {
         // Error. We should only be receiving new connection requests on this socket FD.
         if (printVerboseDebug) {
@@ -839,6 +845,7 @@ void mgmtClientSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtS
         close(connectionFD);
     }
 
+    mgmtConnectionFD = connectionFD;
 }
 
 /**************************************************************
@@ -997,6 +1004,12 @@ int main(int argc, char *argv[]) {
         FD_SET(tcpSockFD, &readFDSet);
         FD_SET(mgmtSockFD, &readFDSet);
 
+        // If a management client is connected. Add the socket to the list
+        // the parent will service.
+        if(mgmtConnectionFD != 0) {
+            FD_SET(mgmtConnectionFD, &readFDSet);
+        }
+
         FD_SET(tunFD, &readFDSet);
 
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
@@ -1004,8 +1017,11 @@ int main(int argc, char *argv[]) {
         if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD);
         if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD);
         if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD);
-        if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD);
+        if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientListenerSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD);
 
+        if(mgmtConnectionFD != 0) {
+            if (FD_ISSET(mgmtConnectionFD, &readFDSet)) mgmtClientSocket(mgmtConnectionFD);
+        }
     }
 }
 
