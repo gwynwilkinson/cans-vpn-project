@@ -29,8 +29,9 @@ To run the server:
 --------------------------
 To run the client: 
 --------------------------
+The client will default to use a UDP tunnel if no protocol is specified with the "--protocol" option.
 
-    $ sudo ./vpnclient
+    $ sudo ./vpnclient -s <serverIP> -n <Remote Network> -m <Remote Network Netmask> [--protocol tcp|udp]
 
 --------------------------
 To run the management client: 
