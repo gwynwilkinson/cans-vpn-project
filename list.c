@@ -92,11 +92,15 @@ void deleteEntry(int protocol, struct sockaddr_in *pPeerAddr) {
         return;
     }
 
-    // TODO - add protocol check too
-    while(sockCmpAddr(pCurrent->pPeerAddress, pPeerAddr) != 0) {
+    // Find the correct entry to delete
+    while((protocol != pCurrent->protocol) && (sockCmpAddr(pCurrent->pPeerAddress, pPeerAddr) != 0)) {
         // Check to see if this was the last node
         if(pCurrent->next == NULL) {
+            printf("deleteEntry() Error!! - Could not find the list entry for peer %s:%d\n",
+                   inet_ntoa(pPeerAddr->sin_addr),
+                   ntohs(pPeerAddr->sin_port));
             return;
+
         } else {
             // Set previous to be the current link, and
             // set current to be the next node
@@ -105,11 +109,18 @@ void deleteEntry(int protocol, struct sockaddr_in *pPeerAddr) {
         }
     }
 
+    printf("Found the node to delete for %s:%d\n",
+           inet_ntoa(pPeerAddr->sin_addr),
+           ntohs(pPeerAddr->sin_port));
+
     // Found the node, update the links
     if(pCurrent == pHead) {
         // Entry was at the head. Only need to update
         // the head variable.
         pHead = pHead->next;
+
+        printf("Setting pHead to NULL\n");
+
     } else {
         // Set the previous node next entry to point to
         // the next element in the list
@@ -118,6 +129,8 @@ void deleteEntry(int protocol, struct sockaddr_in *pPeerAddr) {
         // Set the next element's previous pointer to the
         // previous node.
         (pCurrent->next)->prev = pPrevious;
+
+        printf("Adjusting nodes\n");
     }
 }
 

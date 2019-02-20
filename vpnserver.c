@@ -115,6 +115,7 @@ int createTunDevice() {
         exit(EXIT_FAILURE);
     }
 
+    // TODO - File logging - Report TUN creation
     return (tunFD);
 }
 
@@ -158,6 +159,8 @@ int initUDPServer() {
            udpSockFD,
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
+
+    // TODO - File Logging - Report UDP socket creation
 
     return (udpSockFD);
 }
@@ -221,6 +224,8 @@ int initTCPServer(int portNumber) {
         exit(EXIT_FAILURE);
     }
 
+    // TODO - File Logging - Report TCP socket creation
+
     return (tcpSockFD);
 }
 
@@ -246,6 +251,7 @@ void tunSelected(int tunFD) {
     ssize_t len, size;
 
     bzero(buff, BUFF_SIZE);
+
     len = read(tunFD, buff, BUFF_SIZE);
 
     if ((len == 0) || (len == -1)) {
@@ -291,7 +297,6 @@ void tunSelected(int tunFD) {
     if (pPeerAddr == NULL) {
         fprintf(stderr, "!!!!ERROR!!!! - tunSelected() could not find peer address structure for dest IP %s\n\n",
                 inet_ntoa(destAddr.sin_addr));
-        exit(EXIT_FAILURE);
     }
 
     if (protocol == UDP) {
@@ -335,6 +340,9 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
     }
 
     bzero(buff, BUFF_SIZE);
+
+    printf("UDP Rcv from\n");
+
     len = recvfrom(udpSockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) pPeerAddr, &addrSize);
 
     // Check if its a new client connection
@@ -374,6 +382,8 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
             // 0 is used for the PIPE FD as this is unused for UDP connections
             insertTail(buff, UDP, pPeerAddr, 0, udpSockFD);
         }
+
+        // TODO - File Logging - Report new UDP Client Connection.
 
         // Dont pass the new connection request to the TUN. Just return from the function.
         return;
@@ -465,7 +475,7 @@ void readChildPIPE(int pipeFD) {
  *                      Send to the TUN device (application)
  *
  **************************************************************/
-void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAddr) {
+void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAddr, int pipeFD) {
     char buff[BUFF_SIZE];
     struct iphdr *pIpHeader = (struct iphdr *) buff;
     ssize_t len;
@@ -474,12 +484,14 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
 
     if (len == -1) {
         perror("Child server TCP recv");
+        close(connectionFD);
+        close(pipeFD);
         exit(EXIT_FAILURE);
 
     } else if (len == 0) {
         // Connection has been closed. Kill the connection and
         // child process
-        // TODO - Add management client logic here for client termination
+        // TODO - File Logging - Report TCP Client termination
         printf("TCP Client %s:%d has closed the connection.\n",
                inet_ntoa(pPeerAddr->sin_addr),
                ntohs(pPeerAddr->sin_port));
@@ -489,8 +501,11 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
         }
 
         close(connectionFD);
+        close(pipeFD);
 
-        // TODO - Need to delete the linked list entry.
+        // TODO - Need to delete the linked list entry. - PROBLEM WITH NON-SHARED MEMORY!!!
+        deleteEntry(TCP, pPeerAddr);
+
         exit(EXIT_SUCCESS);
     }
 
@@ -560,7 +575,7 @@ void vpnChildSubProcess(int udpSockFD, int tcpSockFD, int mgmtSockFD, struct soc
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
 
         if (FD_ISSET(pipeFD[0], &readFDSet)) readChildPIPE(pipeFD[0]);
-        if (FD_ISSET(connectionFD, &readFDSet)) readChildTCPSocket(tunFD, connectionFD, pPeerAddr);
+        if (FD_ISSET(connectionFD, &readFDSet)) readChildTCPSocket(tunFD, connectionFD, pPeerAddr, pipeFD[0]);
     }
 }
 
@@ -612,7 +627,8 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         perror("TCP Rcv error");
         return;
     } else if (len == 0) {
-        // TODO - Add management client logic here
+        // TODO - File Logging - Add report of client termination
+
         printf("Client %s:%d has closed the connection\n",
                inet_ntoa(pPeerAddr->sin_addr),
                pPeerAddr->sin_port);
@@ -647,6 +663,8 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
 
             fprintf(stdout, "************************************************************\n");
         }
+
+        // TODO - File Logging - Report new TCP VPN connection
 
         // Create a PIPE for communication between parent/child
         pipe(pipeFD);
@@ -711,6 +729,8 @@ void mgmtClientSocket( int connectionFD) {
         // Clear the FD for the connection socket.
         mgmtConnectionFD = 0;
         close(connectionFD);
+
+        // TODO - File Logging - Report termination of mgmt clien
         return;
     }
 
@@ -722,6 +742,8 @@ void mgmtClientSocket( int connectionFD) {
     // Check what the Management Client requested,
     if (strcmp(buff, "Current Connections") == 0) {
         // Request for Current Connection Information
+
+        // TODO - File Logging - Report connection data request
 
         json_object *jObject = json_object_new_object();
         json_object *jArray = json_object_new_array();
@@ -833,7 +855,7 @@ void mgmtClientListenerSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgm
                 inet_ntoa(pPeerAddr->sin_addr),
                 ntohs(pPeerAddr->sin_port), buff);
 
-        // TODO - something here or not?
+        // TODO - File Logging - Report Mgmt Client connection
     } else {
         // Error. We should only be receiving new connection requests on this socket FD.
         if (printVerboseDebug) {
@@ -933,14 +955,11 @@ void processCmdLineOptions(int argc, char *argv[]) {
  *
  **************************************************************/
 void sigChldHandler(int sig) {
-
-    printf("SIGCHLD - Entered\n");
+    // TODO - File Logging - Do we need to report here?
 
     // Wait for the process to finish using the WNOHANG flag
     // to prevent the handler from blocking.
     while (waitpid((pid_t) (-1), 0, WNOHANG) > 0) {}
-
-    printf("SIGCHLD - Exit\n");
 }
 
 /*********************************************************************
@@ -984,14 +1003,16 @@ int main(int argc, char *argv[]) {
 
     // TODO - work out why this stops new processes from connecting after a child death
     // Register the SIGCHLD handler from reaping child TCP server processes
-//    sa.sa_handler = sigChldHandler;
-//    sigemptyset(&sa.sa_mask);
-//    sa.sa_flags = SA_RESTART;
-//    if(sigaction(SIGCHLD, &sa, NULL) == -1) {
-//        perror("Server sigaction");
-//        exit(EXIT_FAILURE);
-//    }
+    sa.sa_handler = sigChldHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
 
+    if(sigaction(SIGCHLD, &sa, NULL) == -1) {
+        perror("Server sigaction");
+        exit(EXIT_FAILURE);
+    }
+
+    // TODO - File logging - report initialisation complete
     printf("VPN Server Initialisation Complete.\n");
     printf("************************************************************\n");
 
@@ -1012,7 +1033,10 @@ int main(int argc, char *argv[]) {
 
         FD_SET(tunFD, &readFDSet);
 
-        select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
+        if (select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL) == -1 ) {
+            // select was interrupted. reset the loop.
+            continue;
+        }
 
         if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD);
         if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD);
