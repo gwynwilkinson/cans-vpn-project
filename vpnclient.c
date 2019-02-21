@@ -11,6 +11,7 @@
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <stdbool.h>
+#include <signal.h>
 #include "debug.h"
 
 #define BUFF_SIZE 2000
@@ -19,6 +20,9 @@
 #define ICMP 1
 #define TCP 6
 #define UDP 17
+
+#define CERT_FILE "../certs/client-cert.pem"
+#define KEY_FILE  "../certs/client-key.pem"
 
 bool printVerboseDebug = false;
 bool printIPHeaders = false;
@@ -44,15 +48,16 @@ ushort remotePort;
 char protocolType[4] = "";
 
 struct sockaddr_in peerAddr;
+int tunFD, sockFD;
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            createTunDevice()
  *
  * Description:         Creates the TUN
  *                      Configures the TUN IP automatically as 10.4.0.1/24
  *
- **************************************************************/
+ *****************************************************************************************/
 int createTunDevice() {
 
     struct ifreq ifr;
@@ -101,14 +106,14 @@ int createTunDevice() {
     return tunFD;
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            connectToUDPServer()
  *
  * Description:         Creates the UDP socket connection to the
  *                      remote VPN server on specified port
  *
- **************************************************************/
+ *****************************************************************************************/
 int connectToUDPServer() {
 
     struct sockaddr_in localAddr;
@@ -172,14 +177,14 @@ int connectToUDPServer() {
 }
 
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            connectToTCPServer()
  *
  * Description:         Creates the TCP socket connection to the
  *                      remote VPN server on specified port
  *
- **************************************************************/
+ *****************************************************************************************/
 int connectToTCPServer() {
 
     struct sockaddr_in localAddr;
@@ -251,14 +256,14 @@ int connectToTCPServer() {
 
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            tunSelected()
  *
  * Description:         Received a packet on the TUN.
  *                      Send to the UDP or TCP socket (tunnel).
  *
- **************************************************************/
+ *****************************************************************************************/
 void tunSelected(int tunFD, int sockFD, int protocol) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
@@ -305,7 +310,7 @@ void tunSelected(int tunFD, int sockFD, int protocol) {
     }
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            socketSelected()
  *
@@ -314,7 +319,7 @@ void tunSelected(int tunFD, int sockFD, int protocol) {
  *                      extract the data and send to the TUN
  *                      device (application)
  *
- **************************************************************/
+ *****************************************************************************************/
 void socketSelected(int tunFD, int sockFD, int protocol) {
     ssize_t len;
     char buff[BUFF_SIZE];
@@ -376,13 +381,13 @@ void socketSelected(int tunFD, int sockFD, int protocol) {
     write(tunFD, buff, (size_t) len);
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            printUsage()
  *
  * Description:         Display the help for the command line option.
  *
- *********************************************************************/
+ *****************************************************************************************/
 void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n Usage: %s [options]\n\n", argv[0]);
     fprintf(stdout, " Proof of concept for VPN Client\n\n");
@@ -400,14 +405,14 @@ void printUsage(int argc, char *argv[]) {
 }
 
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            processCmdLineOptions()
  *
  * Description:         Process the command line options and setup
  *                      the variables based on the passed in options.
  *
- *********************************************************************/
+ *****************************************************************************************/
 void processCmdLineOptions(int argc, char *argv[]) {
 
     int opt;
@@ -502,8 +507,41 @@ void processCmdLineOptions(int argc, char *argv[]) {
     }
 }
 
+/*****************************************************************************************
+ *
+ * Function:            sigIntHandler()
+ *
+ * Description:         SIGINT Handler for sending a client termination message to the
+ *                      server so that it can remove the UDP instance from its list.
+ *
+ *****************************************************************************************/
+void sigIntHandler(int sig) {
 
-/*********************************************************************
+    char buff[] = "Terminate UDP Connection";
+    ssize_t size;
+    int len = sizeof(buff);
+
+    // Report that this signal can be ignored. We are handling it here.
+    signal(sig, SIG_IGN);
+
+    printf("\nCntrl-C pressed. Terminating connection to VPN server\n");
+
+    // Write the packet to the TUN device.
+    size = write(tunFD, buff, (size_t) len);
+
+    sendto(sockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
+           sizeof(peerAddr));
+
+    if (size == 0) {
+        perror("sendto");
+    }
+
+    sleep(1);
+
+    exit(EXIT_SUCCESS);
+}
+
+/*****************************************************************************************
  *
  * Function:            main()
  *
@@ -512,9 +550,10 @@ void processCmdLineOptions(int argc, char *argv[]) {
  *                      the TUN, the UDP socket and connect the the
  *                      remote VPN server.
  *
- *********************************************************************/
+ *****************************************************************************************/
 int main(int argc, char *argv[]) {
-    int tunFD, sockFD;
+
+    struct sigaction sa;
     int protocol;
 
     // Initialise command line argument buffers
@@ -541,6 +580,16 @@ int main(int argc, char *argv[]) {
     // Client can be either UDP or TCP, start the correct connection
     if (protocol == UDP ) {
         sockFD = connectToUDPServer();
+
+        // For UDP we need to trap any Cntrl-C so that we can send a termination
+        // message to the server so that they can clean up resources on their end
+        sa.sa_handler = sigIntHandler;
+        sigemptyset(&sa.sa_mask);
+
+        if(sigaction(SIGINT, &sa, NULL) == -1) {
+            perror("Server sigaction");
+            exit(EXIT_FAILURE);
+        }
     } else {
         sockFD = connectToTCPServer();
     }
@@ -549,8 +598,6 @@ int main(int argc, char *argv[]) {
 
     printf("VPN Client Initialisation Complete.\n");
     printf("************************************************************\n");
-
-    // TODO - Add a SIGINT handler so we can gracefully close down the UDP 'connection' to the server and remove the connection info.
 
     // Enter the main loop
     while (1) {
