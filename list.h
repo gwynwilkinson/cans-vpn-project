@@ -17,6 +17,7 @@ struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeF
 char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr);
 void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD);
 bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]);
-void deleteEntry(char *pTunIP);
+void deleteEntryByTunIP(char *pTunIP);
+void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr);
 void getDateTime(char pTimeString[]);
 #endif //VPN_TEST_CODE_LIST_H

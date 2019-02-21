@@ -346,15 +346,13 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
 
     bzero(buff, BUFF_SIZE);
 
-    printf("UDP Rcv from\n");
-
     len = recvfrom(udpSockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) pPeerAddr, &addrSize);
 
     // Check if its a new client connection
     if (strncmp("Connection Request", buff, 18) == 0) {
-        fprintf(stdout, "New UDP client connection from %s:%d. Initialisation Msg:- %s\n",
+        fprintf(stdout, "New UDP client connection from %s:%d.\n",
                 inet_ntoa(pPeerAddr->sin_addr),
-                ntohs(pPeerAddr->sin_port), buff);
+                ntohs(pPeerAddr->sin_port));
 
         // Determine if this is a reconnection from the same UDP client. If so,
         // we will need to update the port number for the connection
@@ -393,6 +391,17 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
         // Dont pass the new connection request to the TUN. Just return from the function.
         return;
     }
+    else if (strncmp("Terminate UDP Connection", buff, 24) == 0) {
+        fprintf(stdout, "UDP client %s:%d terminating \n",
+                inet_ntoa(pPeerAddr->sin_addr),
+                ntohs(pPeerAddr->sin_port));
+
+        // Delete the child process entry from the linked list
+        deleteEntryByPeerAddr(pPeerAddr);
+
+        // Entry cleaned up, return from the function.
+        return;
+        }
 
     // Ignore IPv6 packets
     if (pIpHeader->version == 6) {
@@ -634,18 +643,13 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
 
     if (len == -1) {
+        // This shouldnt really happen. Close the connection FD anyway
+        close(connectionFD);
         perror("TCP Rcv error");
         return;
     } else if (len == 0) {
-        // TODO - File Logging - Add report of client termination
-
-        printf("Client %s:%d has closed the connection\n",
-               inet_ntoa(pPeerAddr->sin_addr),
-               pPeerAddr->sin_port);
-
+        // This shouldnt really happen. Close the connection FD anyway
         close(connectionFD);
-
-        // TODO - Need to delete the linked list entry.
         return;
     }
 
@@ -1005,7 +1009,7 @@ void childParentPipeSelected(){
     }
 
     // Delete the child process entry from the linked list
-    deleteEntry(buff);
+    deleteEntryByTunIP(buff);
 
 }
 
@@ -1048,7 +1052,6 @@ int main(int argc, char *argv[]) {
     printf("Configuring Management Client Listener\n");
     mgmtSockFD = initTCPServer(33333);
 
-    // TODO - work out why this stops new processes from connecting after a child death
     // Register the SIGCHLD handler from reaping child TCP server processes
     sa.sa_handler = sigChldHandler;
     sigemptyset(&sa.sa_mask);
