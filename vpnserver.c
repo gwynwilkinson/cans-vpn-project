@@ -49,14 +49,19 @@ bool clientIPAddress[MAX_CLIENTS] = {false};
 
 int mgmtConnectionFD = 0;
 
-/***************************************************************
+// A PIPE used by the child to send data back to the Parent server process
+// indicating that the child is terminating. This allows the parent server
+
+int childParentPipe[2];
+
+/*****************************************************************************************
  *
  * Function:            uniqueClientIPAddress()
  *
  * Description:         Returns the next free client IP Address
  *                      in the 10.4.0.1 -> 10.4.0.250
  *
- **************************************************************/
+ *****************************************************************************************/
 void uniqueClientIPAddress(char *pIpAddress) {
 
     int i;
@@ -74,14 +79,14 @@ void uniqueClientIPAddress(char *pIpAddress) {
     pIpAddress[0] = '\0';
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            createTunDevice()
  *
  * Description:         Creates the TUN
  *                      Configures the TUN IP automatically as 10.4.0.250/24
  *
- **************************************************************/
+ *****************************************************************************************/
 int createTunDevice() {
 
     struct ifreq ifr;
@@ -119,14 +124,14 @@ int createTunDevice() {
     return (tunFD);
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            initUDPServer()
  *
  * Description:         Initialises the UDP server listener on
  *                      the Local UDP server port.
  *
- **************************************************************/
+ *****************************************************************************************/
 int initUDPServer() {
     struct sockaddr_in server;
     struct sockaddr_in localAddr;
@@ -165,7 +170,7 @@ int initUDPServer() {
     return (udpSockFD);
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            initTCPServer()
  *
@@ -176,7 +181,7 @@ int initUDPServer() {
  *                      tunnel server listener, and also for the
  *                      mgmt client interface.
  *
- **************************************************************/
+ *****************************************************************************************/
 int initTCPServer(int portNumber) {
 
     struct sockaddr_in server;
@@ -229,7 +234,7 @@ int initTCPServer(int portNumber) {
     return (tcpSockFD);
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            tunSelected()
  *
@@ -238,7 +243,7 @@ int initTCPServer(int portNumber) {
  *                      to the correct PIPE for the TCP child
  *                      process serving this destination IP
  *
- **************************************************************/
+ *****************************************************************************************/
 void tunSelected(int tunFD) {
 
     char buff[BUFF_SIZE];
@@ -271,9 +276,9 @@ void tunSelected(int tunFD) {
     destAddr.sin_family = AF_INET;
 
     // Obtain the peerAddress structure (Used for UDP) and the PIPE FD (Used for TCP)
-    // for this destination and set the protocol variable so that we can determine which method to
-    // use laster.
-    pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD);
+    // for this destination TUN IP address and set the protocol variable so that we can determine
+    // which method to use later.
+    pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD);
 
     if (printVerboseDebug) {
         printf("TUN->%s Tunnel- Length:- %d\n",
@@ -315,14 +320,14 @@ void tunSelected(int tunFD) {
 }
 
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            udpSocketSelected()
  *
  * Description:         Received a packet on the UDP socket (tunnel)
  *                      Send to the TUN device (application)
  *
- **************************************************************/
+ *****************************************************************************************/
 void udpSocketSelected(int tunFD, int udpSockFD) {
     ssize_t len;
     char buff[BUFF_SIZE];
@@ -419,7 +424,7 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
 }
 
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            readChildPIPE()
  *
@@ -428,7 +433,7 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
  *                      data from the PIPE and send to the
  *                      TCP tunnel FD
  *
- **************************************************************/
+ *****************************************************************************************/
 void readChildPIPE(int pipeFD) {
 
     char buff[BUFF_SIZE];
@@ -455,7 +460,7 @@ void readChildPIPE(int pipeFD) {
     // Obtain the peerAddress structure for this destination and set
     // the protocol variable so that we can determine which method to
     // use.
-    pPeerAddr = findIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD);
+    pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD);
 
     // Send the buffer to the TCP socket
     size = send(connectionFD, buff, (size_t) len, 0);
@@ -467,14 +472,14 @@ void readChildPIPE(int pipeFD) {
 
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            readChildTCPSocket()
  *
  * Description:         Received a packet on the child TCP socket (tunnel)
  *                      Send to the TUN device (application)
  *
- **************************************************************/
+ *****************************************************************************************/
 void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAddr, int pipeFD) {
     char buff[BUFF_SIZE];
     struct iphdr *pIpHeader = (struct iphdr *) buff;
@@ -496,15 +501,20 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
                inet_ntoa(pPeerAddr->sin_addr),
                ntohs(pPeerAddr->sin_port));
 
+        // Find the unique remote TUN IP address in the linked list structure
+        // using the Peer IP and Port as a lookup.
+        strcpy(buff, findByPeerIPAddress(pPeerAddr));
+
+        write(childParentPipe[1], buff, sizeof(buff));
+
         if (printVerboseDebug) {
             printf("Killing Child PID %d - Closing connection FD %d \n", (int) getpid(), connectionFD);
+            printf("CHILD - Sending remote TUN IP %s to parent\n",buff);
         }
 
         close(connectionFD);
         close(pipeFD);
 
-        // TODO - Need to delete the linked list entry. - PROBLEM WITH NON-SHARED MEMORY!!!
-        deleteEntry(TCP, pPeerAddr);
 
         exit(EXIT_SUCCESS);
     }
@@ -538,14 +548,14 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
     write(tunFD, buff, (size_t) len);
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            vpnChildSubProcess()
  *
  * Description:         Subroutine to handle the main loop for the
  *                      VPN TCP socket child process.
  *
- **************************************************************/
+ *****************************************************************************************/
 void vpnChildSubProcess(int udpSockFD, int tcpSockFD, int mgmtSockFD, struct sockaddr_in *pPeerAddr,
                         int pipeFD[], int connectionFD, int tunFD) {
 
@@ -579,7 +589,7 @@ void vpnChildSubProcess(int udpSockFD, int tcpSockFD, int mgmtSockFD, struct soc
     }
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            tcpListenerSocketSelected()
  *
@@ -588,7 +598,7 @@ void vpnChildSubProcess(int udpSockFD, int tcpSockFD, int mgmtSockFD, struct soc
  *                      spawn a new child process to handle
  *                      future data from this connection
  *
- **************************************************************/
+ *****************************************************************************************/
 void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtSockFD) {
     ssize_t len;
     char buff[BUFF_SIZE];
@@ -706,14 +716,14 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
 }
 
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            mgmtClientSocket()
  *
  * Description:         Subroutine to handle the main loop for the
  *                      Management client once it has connected.
  *
- **************************************************************/
+ *****************************************************************************************/
 void mgmtClientSocket( int connectionFD) {
 
     ssize_t len;
@@ -795,7 +805,7 @@ void mgmtClientSocket( int connectionFD) {
     }
 }
 
-/*********************************************************************
+/*****************************************************************************************
  *
  * Function:            mgmtClientListenerSelected()
  *
@@ -803,12 +813,11 @@ void mgmtClientSocket( int connectionFD) {
  *                      fork a server process instance to deal with the
  *                      communication.
  *
- *********************************************************************/
-void mgmtClientListenerSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtSockFD) {
+ *****************************************************************************************/
+void mgmtClientListenerSelected(int mgmtSockFD) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_in *pPeerAddr;
-    struct iphdr *pIpHeader = (struct iphdr *) buff;
     socklen_t addrSize = sizeof(struct sockaddr_in);
     int connectionFD;
     int pid;
@@ -870,13 +879,13 @@ void mgmtClientListenerSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgm
     mgmtConnectionFD = connectionFD;
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            printUsage()
  *
  * Description:         Display the help for the command line option.
  *
- *********************************************************************/
+ *****************************************************************************************/
 void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n Usage: %s [options]\n\n", argv[0]);
     fprintf(stdout, " Proof of concept for VPN Server\n\n");
@@ -891,14 +900,14 @@ void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n");
 }
 
-/*********************************************************************
+/*****************************************************************************************
  *
  * Function:            processCmdLineOptions()
  *
  * Description:         Process the command line options and setup
  *                      the variables based on the passed in options.
  *
- *********************************************************************/
+ *****************************************************************************************/
 void processCmdLineOptions(int argc, char *argv[]) {
 
     int opt;
@@ -946,23 +955,61 @@ void processCmdLineOptions(int argc, char *argv[]) {
     }
 }
 
-/**************************************************************
+/*****************************************************************************************
  *
  * Function:            sigChldHandler()
  *
  * Description:         SIGCHLD Handler for cleaning up the
  *                      terminated child processes.
  *
- **************************************************************/
+ *****************************************************************************************/
 void sigChldHandler(int sig) {
-    // TODO - File Logging - Do we need to report here?
+    // TODO - File Logging - Do we need to report here? - Think its covered by the other places
 
     // Wait for the process to finish using the WNOHANG flag
     // to prevent the handler from blocking.
     while (waitpid((pid_t) (-1), 0, WNOHANG) > 0) {}
 }
 
-/*********************************************************************
+/*****************************************************************************************
+ *
+ * Function:            childParentPipeSelected()
+ *
+ * Description:         A child process has passed some data back
+ *                      to the main parent server process through
+ *                      the PIPE.
+ *                      This indicates that the child is terminating.
+ *                      The data passed back is the unique remote
+ *                      TUN IP. This can be used to delete the child
+ *                      entry from the linked list of current
+ *                      connections
+ *
+ *****************************************************************************************/
+void childParentPipeSelected(){
+
+    ssize_t len;
+    char buff[2000];
+
+    // Read the data from the PIPE (TUN)
+    len = read(childParentPipe[0], buff, BUFF_SIZE);
+
+    if (len == 0) {
+        perror("PIPE read error");
+        exit(EXIT_FAILURE);
+    }
+
+    buff[len] = '\0';
+
+    if(printVerboseDebug) {
+        printf("Parent received request to delete TUN IP %s from linked list!\n", buff);
+    }
+
+    // Delete the child process entry from the linked list
+    deleteEntry(buff);
+
+}
+
+/*****************************************************************************************
  *
  * Function:            main()
  *
@@ -971,7 +1018,7 @@ void sigChldHandler(int sig) {
  *                      Create the UDP Server listener port and wait for
  *                      a connection.
  *
- *********************************************************************/
+ *****************************************************************************************/
 int main(int argc, char *argv[]) {
 
     struct sigaction sa;
@@ -1016,6 +1063,8 @@ int main(int argc, char *argv[]) {
     printf("VPN Server Initialisation Complete.\n");
     printf("************************************************************\n");
 
+    pipe(childParentPipe);
+
     // Enter the main server loop
     while (1) {
         fd_set readFDSet;
@@ -1024,6 +1073,7 @@ int main(int argc, char *argv[]) {
         FD_SET(udpSockFD, &readFDSet);
         FD_SET(tcpSockFD, &readFDSet);
         FD_SET(mgmtSockFD, &readFDSet);
+        FD_SET(childParentPipe[0], &readFDSet);
 
         // If a management client is connected. Add the socket to the list
         // the parent will service.
@@ -1041,7 +1091,8 @@ int main(int argc, char *argv[]) {
         if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD);
         if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD);
         if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD);
-        if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientListenerSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD);
+        if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientListenerSelected(mgmtSockFD);
+        if (FD_ISSET(childParentPipe[0], &readFDSet)) childParentPipeSelected();
 
         if(mgmtConnectionFD != 0) {
             if (FD_ISSET(mgmtConnectionFD, &readFDSet)) mgmtClientSocket(mgmtConnectionFD);
