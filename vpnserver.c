@@ -16,6 +16,7 @@
 #include <json-c/json.h>
 #include "debug.h"
 #include "list.h"
+#include "logging.h"
 
 #define BUFF_SIZE 2000
 #define MAX_CLIENTS 250
@@ -980,6 +981,8 @@ int main(int argc, char *argv[]) {
     // Process the user supplied command line options.
     processCmdLineOptions(argc, argv);
 
+    openlog();
+    
     printf("************************************************************\n");
     printf("VPN Server Initialisation:\n");
 
