@@ -5,41 +5,112 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
+#include "tls.h"
 
 #define CHK_SSL(err) if ((err) < 1) { ERR_print_errors_fp(stderr); exit(2); }
 #define CHK_ERR(err,s) if ((err)==-1) { perror(s); exit(1); }
 
-void processRequest(SSL* ssl, int sock); // Defined in Listing 19.12
+#ifndef ICMP
+#define ICMP 1
+#endif
 
-int verify_callback(int preverify_ok, X509_STORE_CTX *x509_ctx){
-    char  buf[300];
+#ifndef TCP
+#define TCP 6
+#endif
 
-    X509* cert = X509_STORE_CTX_get_current_cert(x509_ctx);
-    X509_NAME_oneline(X509_get_subject_name(cert), buf, 300);
-    printf("subject= %s\n", buf);
+#ifndef UDP
+#define UDP 17
+#endif
 
-    if (preverify_ok == 1) {
-       printf("Verification passed.\n");
-    } else {
-       int err = X509_STORE_CTX_get_error(x509_ctx);
-       printf("Verification failed: %s.\n", X509_verify_cert_error_string(err));
+
+int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP){
+
+    SSL_library_init();
+    SSL_load_error_strings();
+
+    SSL_METHOD *method;
+    if(isServer && protocol==TCP){
+        method = (SSL_METHOD *)TLSv1_2_server_method();
+    }else if (isServer && protocol==UDP){
+        method = (SSL_METHOD *)DTLSv1_2_server_method();
+    }else if (!isServer && protocol==TCP){
+        method = (SSL_METHOD *)TLSv1_2_client_method();
+    }else if (!isServer && protocol==UDP){
+        method = (SSL_METHOD *)DTLSv1_2_client_method();
+    }else{
+        printf("Error: Invalid protocol selected.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
     }
-}
 
-SSL *init_TLS(){
-    SSL_METHOD *meth;
-    SSL_CTX* ctx;
-    SSL *tls;
-    int err;
-    // Step 1: SSL context initialization
-    meth = (SSL_METHOD *)TLS_method();
-    ctx = SSL_CTX_new(meth);
-    //SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, verify_callback);
-    // Step 2: Set up the server certificate and private key
-    SSL_CTX_use_certificate_file(ctx, "./cert_server/server-cert.pem", SSL_FILETYPE_PEM);
-    SSL_CTX_use_PrivateKey_file(ctx, "./cert_server/server-key.pem", SSL_FILETYPE_PEM);
-    // Step 3: Create a new SSL structure for a connection
-    tls = SSL_new (ctx);
-    return tls;
+    session->ctx = SSL_CTX_new(method);
+    if(session->ctx == NULL){
+        printf("Error: Unable to create SSL context.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+    // TODO - figure out what our cipher suite should be, currently haven't
+    // been able to figure out from the docs what's best to use.
+    // Use wireshark to see what's in the default handshake, it might be fine.
+    // SSL_CTX_set_cipher_list( ? );
+
+    SSL_CTX_set_verify(session->ctx, verify, NULL);
+
+    // TODO find the actual name/path of our client/server certs/keys
+    char certfile[128];
+    char keyfile[128];
+    sprintf(certfile, "./vpn-cert.pem");
+    sprintf(keyfile, "./vpn-key.pem");
+
+    int error = 0;
+
+
+    error = SSL_CTX_use_certificate_file(session->ctx, certfile, SSL_FILETYPE_PEM);
+    if (error != 1) {
+        printf("Error: Unable to load certificate.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+
+    error = SSL_CTX_use_PrivateKey_file(session->ctx, keyfile, SSL_FILETYPE_PEM);
+    if (error != 1) {
+        printf("Error: Unable to load private key.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+
+    error = SSL_CTX_check_private_key(session->ctx);
+    if (error != 1) {
+        printf("Error: Invalid Private Key.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+    session->bio = BIO_new_ssl_connect(session->ctx);
+    if (session->bio == NULL) {
+        printf("Error: Unable to create BIO.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+    if(!isServer) BIO_set_conn_hostname(session->bio, serverIP);
+
+    BIO_get_ssl(session->bio, &(session->ssl));
+    if (session->ssl == NULL) {
+        printf("Error: Unable to create SSL instance.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+    if(isServer){
+        SSL_set_accept_state(session->ssl);
+    }else{
+        SSL_set_connect_state(session->ssl);
+        SSL_set_mode(session->ssl, SSL_MODE_AUTO_RETRY);
+    }
+return 0;
 }
