@@ -26,11 +26,11 @@ int openlog(){
 
   if((vpn_logfp = fopen(VPN_LOG, "a")) == NULL){
     perror("Cannot open file: VPN_LOG");
-    return 0;
+    return 1;
   }
   else{
     //    printf("Opened file: %s\n",VPN_LOG);
-    return 1;
+    return 0;
   }
   
 }
@@ -56,7 +56,7 @@ time(&t1);
 
  fprintf(vpn_logfp, "%s %s\n", array, logline);
 
- return 1;
+ return 0;
  
 }
 
@@ -75,5 +75,6 @@ int closelog(){
   fflush(vpn_logfp);
   fclose(vpn_logfp);
   
+  return 0;
 }
 
