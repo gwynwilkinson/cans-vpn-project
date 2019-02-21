@@ -97,7 +97,7 @@ void deleteEntry(char* pTunIP) {
     while(strcmp(pTunIP, pCurrent->tunIP) != 0) {
         // Check to see if this was the last node
         if(pCurrent->next == NULL) {
-            printf("deleteEntry() Error!! - Could not find the list entry for TUN IP %s:%d\n", pTunIP);
+            printf("deleteEntry() Error!! - Could not find the list entry for TUN IP %s\n", pTunIP);
             return;
 
         } else {
