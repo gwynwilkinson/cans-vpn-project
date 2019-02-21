@@ -76,12 +76,12 @@ void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int p
 
 /*****************************************************************************************
  *
- * Function:            deleteEntry()
+ * Function:            deleteEntryByTUN()
  *
- * Description:         Find an entry in the list and delete it
+ * Description:         Find an entry in the list and delete it based on the supplied TUN IP
  *
  *****************************************************************************************/
-void deleteEntry(char* pTunIP) {
+void deleteEntryByTunIP(char* pTunIP) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
@@ -119,9 +119,94 @@ void deleteEntry(char* pTunIP) {
         pPrevious->next = pCurrent->next;
 
         // Set the next element's previous pointer to the
-        // previous node.
-        (pCurrent->next)->prev = pPrevious;
+        // previous node if we are not the last node.
+        if(pCurrent->next != NULL) {
+            (pCurrent->next)->prev = pPrevious;
+        }
     }
+
+    // Free the TUN IP address allocation. Need to call strok()
+    // 4 times to get the final part of the IP address.
+    char delim[] = ".";
+    char *ptr;
+    ptr = strtok(pCurrent->tunIP, delim);
+    ptr = strtok(NULL, delim);
+    ptr = strtok(NULL, delim);
+    ptr = strtok(NULL, delim);
+
+    clientIPAddress[atoi(ptr)] = false;
+
+    // Deallocate the memory
+    free(pCurrent);
+
+}
+
+/*****************************************************************************************
+ *
+ * Function:            deleteEntryByPeerAddr()
+ *
+ * Description:         Find an entry in the list and delete it based on the supplied TUN IP
+ *
+ *****************************************************************************************/
+void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr) {
+
+    // Start looking for an entry from the head of the list
+    struct listEntry* pCurrent = pHead;
+    struct listEntry* pPrevious = NULL;
+
+    // Check for empty list
+    if(pHead == NULL) {
+        printf("deleteEntry() - Head == NULL\n");
+        return;
+    }
+
+    // Find the correct entry to delete
+    while(sockCmpAddr(pPeerAddr, pCurrent->pPeerAddress) != 0) {
+        // Check to see if this was the last node
+        if(pCurrent->next == NULL) {
+            printf("deleteEntry() Error!! - Could not find the list entry for Peer IP %s:%d\n",
+                   inet_ntoa(pPeerAddr->sin_addr),
+                   (int) ntohs(pPeerAddr->sin_port));
+            return;
+
+        } else {
+            // Set previous to be the current link, and
+            // set current to be the next node
+            pPrevious = pCurrent;
+            pCurrent = pCurrent->next;
+        }
+    }
+
+    // Found the node, update the links
+    if(pCurrent == pHead) {
+        // Entry was at the head. Only need to update
+        // the head variable.
+        pHead = pHead->next;
+    } else {
+        // Set the previous node next entry to point to
+        // the next element in the list
+        pPrevious->next = pCurrent->next;
+
+        // Set the next element's previous pointer to the
+        // previous node if we are not the last node.
+        if(pCurrent->next != NULL) {
+            (pCurrent->next)->prev = pPrevious;
+        }
+    }
+
+    // Free the TUN IP address allocation. Need to call strok()
+    // 4 times to get the final part of the IP address.
+    char delim[] = ".";
+    char *ptr;
+    ptr = strtok(pCurrent->tunIP, delim);
+    ptr = strtok(NULL, delim);
+    ptr = strtok(NULL, delim);
+    ptr = strtok(NULL, delim);
+
+    clientIPAddress[atoi(ptr)] = false;
+
+    // Deallocate the memory
+    free(pCurrent);
 }
 
 /*****************************************************************************************
