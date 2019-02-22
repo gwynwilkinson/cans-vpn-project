@@ -14,6 +14,9 @@
 #include <getopt.h>
 #include <wait.h>
 #include <json-c/json.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include "tls.h"
 #include "debug.h"
 #include "list.h"
 
@@ -1102,4 +1105,3 @@ int main(int argc, char *argv[]) {
         }
     }
 }
-

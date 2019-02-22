@@ -12,7 +12,10 @@
 #include <netinet/udp.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include "debug.h"
+#include "tls.h"
 
 #define BUFF_SIZE 2000
 #define MAX_IP_ADDRESS_LENGTH 16
@@ -264,7 +267,7 @@ int connectToTCPServer() {
  *                      Send to the UDP or TCP socket (tunnel).
  *
  *****************************************************************************************/
-void tunSelected(int tunFD, int sockFD, int protocol) {
+void tunSelected(int tunFD, int sockFD, int protocol, SSL* ssl) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
 
@@ -299,10 +302,12 @@ void tunSelected(int tunFD, int sockFD, int protocol) {
 
     // Use the correct method to send depending on the protocol used.
     if (protocol == UDP) {
-        size = sendto(sockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
-                      sizeof(peerAddr));
+        /*size = sendto(sockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
+                      sizeof(peerAddr));*/
+        size = SSL_write(ssl, buff, len);
     } else {
-        size = send(sockFD, buff, len, 0);
+        //size = send(sockFD, buff, len, 0);
+        size = SSL_write(ssl, buff, len);
     }
 
     if (size == 0) {
@@ -314,13 +319,13 @@ void tunSelected(int tunFD, int sockFD, int protocol) {
  *
  * Function:            socketSelected()
  *
- * Description:         Received a packet on the a socket (tunnel).
+ * Description:         Received a packet on the socket (tunnel).
  *                      Handle either TCP or UDP connection,
  *                      extract the data and send to the TUN
  *                      device (application)
  *
  *****************************************************************************************/
-void socketSelected(int tunFD, int sockFD, int protocol) {
+void socketSelected(int tunFD, int sockFD, int protocol, SSL* ssl) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_storage remoteAddress;
@@ -329,10 +334,11 @@ void socketSelected(int tunFD, int sockFD, int protocol) {
 
     bzero(buff, BUFF_SIZE);
     if(protocol == UDP) {
-        len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
+        //len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
+        len = SSL_read (ssl, buff, BUFF_SIZE);
     } else {
-        len = recv(sockFD, buff, BUFF_SIZE, 0);
-
+        //len = recv(sockFD, buff, BUFF_SIZE, 0);
+        len = SSL_read (ssl, buff, BUFF_SIZE);
         // Get the peer address info
         getpeername(sockFD, (struct sockaddr *) &remoteAddress, &addrSize);
     }
@@ -555,6 +561,7 @@ int main(int argc, char *argv[]) {
 
     struct sigaction sa;
     int protocol;
+    int ssl_err;
 
     // Initialise command line argument buffers
     serverIP[0] = '\0';
@@ -581,7 +588,7 @@ int main(int argc, char *argv[]) {
     if (protocol == UDP ) {
         sockFD = connectToUDPServer();
 
-        // For UDP we need to trap any Cntrl-C so that we can send a termination
+        // For UDP we need to trap any Ctrl-C so that we can send a termination
         // message to the server so that they can clean up resources on their end
         sa.sa_handler = sigIntHandler;
         sigemptyset(&sa.sa_mask);
@@ -595,6 +602,27 @@ int main(int argc, char *argv[]) {
     }
 
     tunFD = createTunDevice();
+
+
+    tls_session client_session;
+
+
+    if(tls_init(&client_session, false, protocol, SSL_VERIFY_NONE, serverIP, CERT_FILE, KEY_FILE) == -1){
+        perror("Client tls_init");
+        exit(EXIT_FAILURE);
+    }
+    /*Bind the socket to the SSL structure*/
+    SSL_set_fd(client_session.ssl,sockFD);
+
+    /*Connect to the server, SSL layer.*/
+    if(SSL_connect(client_session.ssl) != 1){
+        perror("Client SSL_connect");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("SSL connection is successful\n");
+    printf ("SSL connection using %s\n", SSL_get_cipher(client_session.ssl));
+
 
     printf("VPN Client Initialisation Complete.\n");
     printf("************************************************************\n");
@@ -616,13 +644,12 @@ int main(int argc, char *argv[]) {
 
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
 
-        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, sockFD, protocol);
+        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, sockFD, protocol, client_session.ssl);
 
         if (protocol == UDP) {
-            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, UDP);
+            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, UDP, client_session.ssl);
         } else {
-            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, TCP);
+            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, TCP, client_session.ssl);
         }
     }
 }
- 

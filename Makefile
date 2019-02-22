@@ -1,9 +1,9 @@
 CC=gcc
 CFLAGS=-g
-LDLIBS=-ljson-c
+LDLIBS=-ljson-c -lssl -lcrypto
 DEPS = *h
 SERVER_OBJ = list.o sock.o
-COMMON_OBJ = debug.o
+COMMON_OBJ = debug.o tls.o
 
 %.o: %.c %(DEPS)
 	$CC -c -o $@ $ $(LDLIBS)< $(CFLAGS)
@@ -14,5 +14,5 @@ vpnclient: vpnclient.o $(COMMON_OBJ)
 vpnserver: vpnserver.o $(COMMON_OBJ) $(SERVER_OBJ)
 vpnmanager: vpnmanager.o
 
-clean: 
+clean:
 	rm vpnserver vpnclient *.o

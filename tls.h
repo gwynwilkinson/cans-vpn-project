@@ -13,4 +13,4 @@ typedef struct {
     BIO *bio;
 } tls_session;
 
-int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP);
+int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP, char *certfile, char *keyfile);

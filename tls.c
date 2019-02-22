@@ -8,9 +8,6 @@
 #include <stdbool.h>
 #include "tls.h"
 
-#define CHK_SSL(err) if ((err) < 1) { ERR_print_errors_fp(stderr); exit(2); }
-#define CHK_ERR(err,s) if ((err)==-1) { perror(s); exit(1); }
-
 #ifndef ICMP
 #define ICMP 1
 #endif
@@ -24,7 +21,7 @@
 #endif
 
 
-int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP){
+int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP, char *certfile, char *keyfile){
 
     SSL_library_init();
     SSL_load_error_strings();
@@ -57,12 +54,6 @@ int tls_init(tls_session* session, bool isServer, int protocol, int verify, char
     // SSL_CTX_set_cipher_list( ? );
 
     SSL_CTX_set_verify(session->ctx, verify, NULL);
-
-    // TODO find the actual name/path of our client/server certs/keys
-    char certfile[128];
-    char keyfile[128];
-    sprintf(certfile, "./vpn-cert.pem");
-    sprintf(keyfile, "./vpn-key.pem");
 
     int error = 0;
 
