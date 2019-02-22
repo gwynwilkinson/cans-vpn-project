@@ -17,6 +17,7 @@
 #include <json-c/json.h>
 #include "debug.h"
 #include "list.h"
+#include "logging.h"
 
 #define BUFF_SIZE 2000
 #define MAX_CLIENTS 250
@@ -1126,25 +1127,28 @@ int main(int argc, char *argv[]) {
     // Process the user supplied command line options.
     processCmdLineOptions(argc, argv);
 
-    printf("************************************************************\n");
-    printf("VPN Server Initialisation:\n");
+    openlog();
+    
+
+    LOG(BOTH,"************************************************************\n");
+    LOG(BOTH,"VPN Server Initialisation:\n");
 
     // Set the ip forwarding - sysctl net.ipv4.ip_forward=1
-    printf("Auto configuring IP forwarding\n ");
+    LOG(BOTH,"Auto configuring IP forwarding\n ");
     retVal = system("/sbin/sysctl net.ipv4.ip_forward=1");
 
     if (retVal != 0) {
-        printf("Configuring IP forwarding returned Error code %d\n", retVal);
+      LOG(BOTH,"Configuring IP forwarding returned Error code %d\n", retVal);
         exit(EXIT_FAILURE);
     }
 
     tunFD = createTunDevice();
-    printf("Configuring VPN TCP Listener\n");
+    LOG(BOTH,"Configuring VPN TCP Listener\n");
     tcpSockFD = initTCPServer(tcpPortNumber);
     udpSockFD = initUDPServer();
 
     // Create a socket for the Management Client connection.
-    printf("Configuring Management Client Listener\n");
+    LOG(BOTH,"Configuring Management Client Listener\n");
     mgmtSockFD = initTCPServer(33333);
 
     // Register the SIGCHLD handler from reaping child TCP server processes
@@ -1158,8 +1162,8 @@ int main(int argc, char *argv[]) {
     }
 
     // TODO - File logging - report initialisation complete
-    printf("VPN Server Initialisation Complete.\n");
-    printf("************************************************************\n");
+    LOG(BOTH,"VPN Server Initialisation Complete.\n");
+    LOG(BOTH,"************************************************************\n");
 
     pipe(childParentPipe);
 

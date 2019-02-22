@@ -3,7 +3,7 @@ CFLAGS=-g
 LDLIBS=-ljson-c
 DEPS = *h
 SERVER_OBJ = list.o sock.o
-COMMON_OBJ = debug.o
+COMMON_OBJ = debug.o logging.o
 
 %.o: %.c %(DEPS)
 	$CC -c -o $@ $ $(LDLIBS)< $(CFLAGS)
