@@ -289,6 +289,7 @@ void terminateConnection(int mgmtSockFD) {
     int index, temp, numConnections;
     int status = 0;
 
+    // TODO - Add authentication of user before performing this action
 
     // Display the current connections to the user
     numConnections = displayCurrentConnections(mgmtSockFD);
