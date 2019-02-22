@@ -327,6 +327,13 @@ void socketSelected(int tunFD, int sockFD, int protocol) {
     bzero(buff, BUFF_SIZE);
     if(protocol == UDP) {
         len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
+
+        // Check that this isnt a termination request from the server
+        if(strcmp(buff, "Terminate Connection") == 0) {
+            // Server asked to terminate this connection.
+            printf("Server terminated the connection- Exiting.\n");
+            exit(EXIT_SUCCESS);
+        }
     } else {
         len = recv(sockFD, buff, BUFF_SIZE, 0);
 

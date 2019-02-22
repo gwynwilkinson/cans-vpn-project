@@ -16,7 +16,7 @@
  *                      return a pointer to it.
  *
  *****************************************************************************************/
-struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD) {
+struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD, int pid) {
 
     // Allocate the memory for the new list entry node.
     struct listEntry *pNewEntry  = (struct listEntry*)malloc(sizeof(struct listEntry));
@@ -35,6 +35,7 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
     pNewEntry->pPeerAddress = pPeerAddr;
     pNewEntry->connectionFD = connectionFD;
     pNewEntry->pipeFD = pipFD;
+    pNewEntry->pid = pid;
 
     // Initialise the previous and next pointers
     pNewEntry->prev = NULL;
@@ -51,13 +52,13 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
  *                      the list..
  *
  *****************************************************************************************/
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD) {
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, int pid) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Create the new list entry node
-    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD);
+    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, pid);
 
     // Check to see if the head is empty. If so, insert there
     if(pHead == NULL ) {
@@ -280,6 +281,38 @@ char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr) {
     }
 
     return(pCurrent->tunIP);
+}
+
+/*****************************************************************************************
+ *
+ * Function:            getPidByIndex()
+ *
+ * Description:         Obtain the child PID based on index position in the linked list.
+ *                      (Used by the terminate connection index by management client)
+ *
+ *****************************************************************************************/
+struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSockFD) {
+
+    int i = 0;
+
+    // Start looking for an entry from the head of the list
+    struct listEntry* pCurrent = pHead;
+
+    while((pCurrent != NULL) && (i < index)) {
+        pCurrent = pCurrent->next;
+        i++;
+    }
+
+    if(pCurrent == NULL) {
+        // Index appears to be invalid. Return.
+        return (0);
+    } else {
+        *pPid = pCurrent->pid;
+        *pSockFD = pCurrent->connectionFD;
+        *ppTunIP = pCurrent->tunIP;
+        return(pCurrent->pPeerAddress);
+    }
+
 }
 
 /*****************************************************************************************

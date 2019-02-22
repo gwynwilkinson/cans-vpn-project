@@ -5,6 +5,7 @@ int connectToTCPServer();
 
 int displayMainMenu();
 
-void displayCurrentConnections(int mgmtSockFD);
+int displayCurrentConnections(int mgmtSockFD);
+void terminateConnection(int mgmtSockFD);
 
 #endif //CANS_VPN_PROJECT_VPNMANAGER_H

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <linux/if.h>
+#include <linux/if.h>
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
 #include <stdlib.h>
@@ -354,21 +355,9 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
                 inet_ntoa(pPeerAddr->sin_addr),
                 ntohs(pPeerAddr->sin_port));
 
-        // Determine if this is a reconnection from the same UDP client. If so,
-        // we will need to update the port number for the connection
-        if (updatePeerAddress(pPeerAddr, buff) == false) {
-            // Send back to the client a unique IP address.
-            uniqueClientIPAddress(buff);
-        } else {
-            // A reconnection from an existing client. The
-            // function will have reset the original TUN IP address. Do
-            // nothing here.
 
-            if (printVerboseDebug) {
-                printf("Reconnection from TUN IP %s\n", buff);
-                printf("************************************************************\n");
-            }
-        }
+        // Send back to the client a unique IP address.
+        uniqueClientIPAddress(buff);
 
         // Ensure we got a client address
         if (buff[0] != '\0') {
@@ -383,15 +372,16 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
 
             // Add the peer address structure to the linked list.
             // 0 is used for the PIPE FD as this is unused for UDP connections
-            insertTail(buff, UDP, pPeerAddr, 0, udpSockFD);
+            insertTail(buff, UDP, pPeerAddr, 0, udpSockFD, 0);
         }
 
         // TODO - File Logging - Report new UDP Client Connection.
 
         // Dont pass the new connection request to the TUN. Just return from the function.
         return;
-    }
-    else if (strncmp("Terminate UDP Connection", buff, 24) == 0) {
+    } else if (strncmp("Terminate UDP Connection", buff, 24) == 0) {
+
+        // Client has requested to terminate the connection
         fprintf(stdout, "UDP client %s:%d terminating \n",
                 inet_ntoa(pPeerAddr->sin_addr),
                 ntohs(pPeerAddr->sin_port));
@@ -401,7 +391,7 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
 
         // Entry cleaned up, return from the function.
         return;
-        }
+    }
 
     // Ignore IPv6 packets
     if (pIpHeader->version == 6) {
@@ -687,11 +677,6 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
             printf("Created PIPE with FDs [%d] and [%d]\n", pipeFD[0], pipeFD[1]);
         }
 
-        // Add the peer address structure to the linked list and store the pipeFD
-        // so that the parent process can determine which child needs to handle
-        // the TUN->tunnel communication. Also store the socket connectionFD
-        // so that the child process can send the message to the correct connection
-        insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD);
 
         // Fork a new server instance to deal with this TCP connection
         if ((pid = fork()) == 0) {
@@ -702,6 +687,12 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
 
         } else {
             // This is the Parent process
+
+            // Add the peer address structure to the linked list and store the pipeFD
+            // so that the parent process can determine which child needs to handle
+            // the TUN->tunnel communication. Also store the socket connectionFD
+            // so that the child process can send the message to the correct connection
+            insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, pid);
 
             // Parent does not need the connection FD
             close(connectionFD);
@@ -730,8 +721,12 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
  *****************************************************************************************/
 void mgmtClientSocket( int connectionFD) {
 
-    ssize_t len;
+    json_object *jParsedJson;
+    json_object *jStringRequestType;
+
     char buff[BUFF_SIZE];
+    ssize_t len;
+
     bzero(buff, BUFF_SIZE);
 
     len = read(connectionFD, buff, BUFF_SIZE);
@@ -748,13 +743,25 @@ void mgmtClientSocket( int connectionFD) {
         return;
     }
 
+    // Decode the JSON request string
+    jParsedJson = json_tokener_parse(buff);
+
+    if(jParsedJson == NULL) {
+        // JSON parse error. Print an error and bail.
+        printf("Sever received invalid JSON string from Mgmt Client\n");
+        return;
+    }
+
+    // Extract the request type.
+    json_object_object_get_ex(jParsedJson, "request", &jStringRequestType);
+
     // Handle the request
     if (printVerboseDebug) {
-        printf("Mgmt Client requested:- \"%s\"\n", buff);
+        printf("Mgmt Client requested:- \"%s\"\n", json_object_get_string(jStringRequestType));
     }
 
     // Check what the Management Client requested,
-    if (strcmp(buff, "Current Connections") == 0) {
+    if (strcmp(json_object_get_string(jStringRequestType), "Current Connections") == 0) {
         // Request for Current Connection Information
 
         // TODO - File Logging - Report connection data request
@@ -799,10 +806,98 @@ void mgmtClientSocket( int connectionFD) {
         // Send the data back to the manager
         len = send(connectionFD, buff, sizeof(buff), 0);
 
-        if (len == 0) {
+        if ((len == 0) || (len == -1)) {
             // Error sending data
             perror("TCP socket send");
         }
+
+    } else if (strcmp(json_object_get_string(jStringRequestType), "Terminate Connection") == 0) {
+
+        // TODO - Log termination of a client
+
+        // Request to terminate connection. Determine which index
+        int index;
+        int pid;
+        int sockFD;
+        char *pTunIP = NULL;
+        struct sockaddr_in *pPeerAddr = NULL;
+
+        json_object *jObject;
+        json_object *jIntIndex;
+        json_object *jStringResponseCode;
+
+        json_object_object_get_ex(jParsedJson, "index", &jIntIndex);
+
+        index = json_object_get_int(jIntIndex);
+
+        pPeerAddr = getPidByIndex(index, &pid, &pTunIP, &sockFD);
+
+        printf("VPN Manager requested termination of connection for TUN IP %s. Peer address %s:%d\n",
+               pTunIP,
+               inet_ntoa(pPeerAddr->sin_addr),
+               ntohs(pPeerAddr->sin_port));
+
+        // Format the response message
+        jObject = json_object_new_object();
+
+        if(pid != 0) {
+            if(kill(pid, SIGTERM) == 0) {
+                // Process killed successfully
+                jStringResponseCode = json_object_new_string("Success");
+
+                // Delete the entry from the linked list
+                deleteEntryByTunIP(pTunIP);
+
+            } else {
+                // Error in process termination
+                jStringResponseCode = json_object_new_string("Failure");
+
+            }
+
+        } else {
+
+            // Terminating a UDP connection. UDP is serviced by the parent process and the
+            // UDP client will not 'notice' that the server is not responding due to the connectionless
+            // nature of the transport.
+            // Send back a message to the client indicating that we are terminating the connection, and then
+            // remove the list entry for this connection.
+
+            char terminateBuffer[21] = "Terminate Connection";
+
+            // Send the message to the correct peer.
+            len = sendto(sockFD, terminateBuffer, sizeof(terminateBuffer), 0, (struct sockaddr *) pPeerAddr,
+                          sizeof(struct sockaddr));
+
+            if ((len == 0) || (len == -1)) {
+                perror("sendto");
+
+                // Error in process termination
+                jStringResponseCode = json_object_new_string("Failure");
+
+            } else {
+                // Process killed successfully
+                jStringResponseCode = json_object_new_string("Success");
+
+                // Delete the entry from the linked list
+                deleteEntryByTunIP(pTunIP);
+            }
+
+        }
+
+        // Format up the response to the vpn manager
+        json_object_object_add(jObject, "response", jStringResponseCode);
+
+        // Copy the JSON string to 'buff'
+        strcpy(buff, json_object_to_json_string(jObject));
+
+        // Send the connection request to the server
+        len = send(connectionFD, buff, strlen(buff), 0);
+
+        if ((len == 0) || (len == -1)) {
+            // Error sending data
+            perror("TCP socket send");
+        }
+
 
     } else {
         printf("UNKNOWN REQUEST %s\n", buff);
