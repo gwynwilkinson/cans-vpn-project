@@ -14,8 +14,9 @@
 #include <signal.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#include "debug.h"
 #include "tls.h"
+#include "debug.h"
+
 
 #define BUFF_SIZE 2000
 #define MAX_IP_ADDRESS_LENGTH 16

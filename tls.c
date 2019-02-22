@@ -28,13 +28,13 @@ int tls_init(tls_session* session, bool isServer, int protocol, int verify, char
 
     SSL_METHOD *method;
     if(isServer && protocol==TCP){
-        method = (SSL_METHOD *)TLSv1_2_server_method();
+        method = (SSL_METHOD *)TLS_server_method();
     }else if (isServer && protocol==UDP){
-        method = (SSL_METHOD *)DTLSv1_2_server_method();
+        method = (SSL_METHOD *)DTLS_server_method();
     }else if (!isServer && protocol==TCP){
-        method = (SSL_METHOD *)TLSv1_2_client_method();
+        method = (SSL_METHOD *)TLS_client_method();
     }else if (!isServer && protocol==UDP){
-        method = (SSL_METHOD *)DTLSv1_2_client_method();
+        method = (SSL_METHOD *)DTLS_client_method();
     }else{
         printf("Error: Invalid protocol selected.\n");
         return -1;
