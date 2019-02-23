@@ -1,6 +1,8 @@
 #ifndef VPN_TEST_CODE_LIST_H
 #define VPN_TEST_CODE_LIST_H
 # include <stdbool.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 struct listEntry {
     char tunIP[17];                         // String containing IP of remote TUN
@@ -9,13 +11,14 @@ struct listEntry {
     struct sockaddr_in *pPeerAddress;       // Peer address structure for UDP connection
     int pipeFD;                             // FD of PIPE for child process
     int connectionFD;                       // socketFD (TCP or UDP)
+    SSL* pTLS;
     struct listEntry* next;
     struct listEntry* prev;
 };
 
-struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD);
+struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL* tls);
 char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr);
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD);
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, SSL* tls);
 bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]);
 void deleteEntryByTunIP(char *pTunIP);
 void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr);

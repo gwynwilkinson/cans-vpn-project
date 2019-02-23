@@ -20,6 +20,63 @@
 #define UDP 17
 #endif
 
+int tls_ctx_init(SSL_CTX *ctx, int protocol, int verify, char *certfile, char *keyfile){
+
+    SSL_library_init();
+    SSL_load_error_strings();
+
+    SSL_METHOD *method;
+    if(protocol==TCP){
+        method = (SSL_METHOD *)TLS_server_method();
+    }else if (protocol==UDP){
+        method = (SSL_METHOD *)DTLS_server_method();
+    }else{
+        printf("Error: Invalid protocol selected.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+    ctx = SSL_CTX_new(method);
+    if(ctx == NULL){
+        printf("Error: Unable to create SSL context.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+    // TODO - figure out what our cipher suite should be, currently haven't
+    // been able to figure out from the docs what's best to use.
+    // Use wireshark to see what's in the default handshake, it might be fine.
+    // SSL_CTX_set_cipher_list( ? );
+
+    SSL_CTX_set_verify(ctx, verify, NULL);
+
+    int error = 0;
+
+
+    error = SSL_CTX_use_certificate_file(ctx, certfile, SSL_FILETYPE_PEM);
+    if (error != 1) {
+        printf("Error: Unable to load certificate.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+
+    error = SSL_CTX_use_PrivateKey_file(ctx, keyfile, SSL_FILETYPE_PEM);
+    if (error != 1) {
+        printf("Error: Unable to load private key.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+
+
+    error = SSL_CTX_check_private_key(ctx);
+    if (error != 1) {
+        printf("Error: Invalid Private Key.\n");
+        return -1;
+        // TODO - bring error handling and logging in line with elsewhere
+    }
+return 0;
+}
 
 int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP, char *certfile, char *keyfile){
 
