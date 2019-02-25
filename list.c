@@ -218,7 +218,7 @@ void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr) {
  *                      address in string format. EG ("10.4.0.1")
  *
  *****************************************************************************************/
-struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL* tls) {
+struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL** tls) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
@@ -249,7 +249,7 @@ struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeF
     // Set the PIPE FD
     *pPipeFD = pCurrent->pipeFD;
 
-    tls = pCurrent->pTLS;
+    *tls = pCurrent->pTLS;
 
     return(pCurrent->pPeerAddress);
 }

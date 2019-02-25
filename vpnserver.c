@@ -313,7 +313,6 @@ void tunSelected(int tunFD, SSL_CTX* tls_ctx, SSL_CTX* dtls_ctx) {
 
     if (protocol == UDP) {
         // Send the message to the correct peer.
-        // TODO - ssl_write() goes here
         size = SSL_write(dtls, buff, len);
         //size = sendto(connectionFD, buff, (size_t) len, 0, (struct sockaddr *) pPeerAddr,
         //              sizeof(struct sockaddr));
@@ -500,7 +499,7 @@ void readChildPIPE(int pipeFD, SSL* tls) {
     // Obtain the peerAddress structure for this destination and set
     // the protocol variable so that we can determine which method to
     // use.
-    pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, tls);
+    pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, &tls);
 
     // Send the buffer to the TCP socket
     size = SSL_write(tls, buff, (size_t) len);
@@ -676,7 +675,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         printf("Connection FD for new connection is %d\n", connectionFD);
     }
 
-
+    // TODO - Move SSL Handshake stuff here so we're not sending new IP unencrypted
 
 
 
