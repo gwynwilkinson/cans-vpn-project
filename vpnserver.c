@@ -285,7 +285,7 @@ void tunSelected(int tunFD, SSL_CTX* tls_ctx, SSL_CTX* dtls_ctx) {
     // Obtain the peerAddress structure (Used for UDP) and the PIPE FD (Used for TCP)
     // for this destination TUN IP address and set the protocol variable so that we can determine
     // which method to use later.
-    pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, dtls);
+    pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, &dtls);
 
     if (printVerboseDebug) {
         printf("TUN->%s Tunnel- Length:- %d\n",
@@ -411,7 +411,7 @@ void udpSocketSelected(int tunFD, int udpSockFD, SSL_CTX* dtls_ctx) {
             /*Do the SSL Handshake*/
             err=SSL_accept(dtls);
 
-            insertTail(buff, UDP, pPeerAddr, 0, udpSockFD, dtls);
+            insertTail(buff, UDP, pPeerAddr, 0, udpSockFD, &dtls);
         }
 
         // TODO - SSL_set_fd and SSL_accept go here?
@@ -502,7 +502,7 @@ void readChildPIPE(int pipeFD, SSL* tls) {
     pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, &tls);
 
     // Send the buffer to the TCP socket
-    size = SSL_write(tls, buff, (size_t) len);
+    size = SSL_write(tls, buff,  (int) len);
     //size = send(connectionFD, buff, (size_t) len, 0);
 
 
@@ -675,8 +675,19 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         printf("Connection FD for new connection is %d\n", connectionFD);
     }
 
-    // TODO - Move SSL Handshake stuff here so we're not sending new IP unencrypted
+    /*Create new ssl object*/
+    tls=SSL_new(tls_ctx);
 
+    if (!tls) {
+        perror("Error creating SSL structure.");
+        return;
+    }
+
+    /* Bind the ssl object with the socket*/
+    SSL_set_fd(tls, connectionFD);
+
+    /*Do the SSL Handshake*/
+    err=SSL_accept(tls);
 
 
     bzero(buff, BUFF_SIZE);
@@ -704,10 +715,11 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
 
         // Ensure we got a client address
         if (buff[0] != '\0') {
-            len = send(connectionFD, buff, strlen(buff), 0);
+            len = SSL_write(tls, buff, strlen(buff));
+            //len = send(connectionFD, buff, strlen(buff), 0);
 
             if (len == -1) {
-                perror("TCP Send error");
+                perror("SSL Send error");
                 return;
             }
 
@@ -725,19 +737,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         // Create a PIPE for communication between parent/child
         pipe(pipeFD);
 
-        /*Create new ssl object*/
-        tls=SSL_new(tls_ctx);
 
-        if (!tls) {
-            perror("Error creating SSL structure.");
-            return;
-        }
-
-        /* Bind the ssl object with the socket*/
-        SSL_set_fd(tls, connectionFD);
-
-        /*Do the SSL Handshake*/
-        err=SSL_accept(tls);
 
         if (printVerboseDebug) {
             printf("Created PIPE with FDs [%d] and [%d]\n", pipeFD[0], pipeFD[1]);
@@ -747,7 +747,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         // so that the parent process can determine which child needs to handle
         // the TUN->tunnel communication. Also store the socket connectionFD
         // so that the child process can send the message to the correct connection
-        insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, tls);
+        insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, &tls);
 
         // Fork a new server instance to deal with this TCP connection
         if ((pid = fork()) == 0) {

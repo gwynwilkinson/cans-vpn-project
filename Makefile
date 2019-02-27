@@ -12,7 +12,7 @@ all: vpnclient vpnserver vpnmanager
 
 vpnclient: vpnclient.o $(COMMON_OBJ)
 vpnserver: vpnserver.o $(COMMON_OBJ) $(SERVER_OBJ)
-vpnmanager: vpnmanager.o
+vpnmanager: vpnmanager.o $(COMMON_OBJ)
 
 clean:
 	rm vpnserver vpnclient *.o

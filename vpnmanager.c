@@ -5,6 +5,9 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include "vpnmanager.h"
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include "tls.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define SERVER_PORT 33333
@@ -13,6 +16,9 @@
 #define BUFF_SIZE 2000
 #define TCP 6
 #define UDP 17
+
+#define CERT_FILE "../certs/manager-cert.pem"
+#define KEY_FILE  "../certs/manager-key.pem"
 
 bool printVerboseDebug=false;
 
@@ -30,6 +36,25 @@ int main(int argc, char *argv[]) {
 
     // Connect to the Server.
     mgmtSockFD = connectToTCPServer();
+
+    tls_session client_session;
+
+    if(tls_init(&client_session, false, TCP, SSL_VERIFY_NONE, SERVER_IP, CERT_FILE, KEY_FILE) == -1){
+        perror("Client tls_init");
+        exit(EXIT_FAILURE);
+    }
+    /*Bind the socket to the SSL structure*/
+    SSL_set_fd(client_session.ssl,mgmtSockFD);
+
+    /*Connect to the server, SSL layer.*/
+    if(SSL_connect(client_session.ssl) != 1){
+        perror("Client SSL_connect");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("SSL connection is successful\n");
+    printf ("SSL connection using %s\n", SSL_get_cipher(client_session.ssl));
+
 
     // Main Menu loop
     while (menuOption != EXIT_PROGRAM) {
