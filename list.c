@@ -16,7 +16,7 @@
  *                      return a pointer to it.
  *
  *****************************************************************************************/
-struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD, SSL* tls) {
+struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD, SSL *pTls) {
 
     // Allocate the memory for the new list entry node.
     struct listEntry *pNewEntry  = (struct listEntry*)malloc(sizeof(struct listEntry));
@@ -35,7 +35,7 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
     pNewEntry->pPeerAddress = pPeerAddr;
     pNewEntry->connectionFD = connectionFD;
     pNewEntry->pipeFD = pipFD;
-    pNewEntry->pTLS = tls;
+    pNewEntry->pTLS = pTls;
 
     // Initialise the previous and next pointers
     pNewEntry->prev = NULL;
@@ -52,13 +52,13 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
  *                      the list..
  *
  *****************************************************************************************/
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, SSL** tls) {
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, SSL *pTls) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Create the new list entry node
-    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, tls);
+    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, pTls);
 
     // Check to see if the head is empty. If so, insert there
     if(pHead == NULL ) {
@@ -218,7 +218,7 @@ void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr) {
  *                      address in string format. EG ("10.4.0.1")
  *
  *****************************************************************************************/
-struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL** tls) {
+struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL **ppTls) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
@@ -249,7 +249,7 @@ struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeF
     // Set the PIPE FD
     *pPipeFD = pCurrent->pipeFD;
 
-    *tls = pCurrent->pTLS;
+    *ppTls = pCurrent->pTLS;
 
     return(pCurrent->pPeerAddress);
 }

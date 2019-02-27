@@ -16,9 +16,9 @@ struct listEntry {
     struct listEntry* prev;
 };
 
-struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL** tls);
+struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL **ppTls);
 char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr);
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, SSL** tls);
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, SSL *pTls);
 bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]);
 void deleteEntryByTunIP(char *pTunIP);
 void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr);
