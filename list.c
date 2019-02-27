@@ -58,7 +58,7 @@ void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int p
     struct listEntry* pCurrent = pHead;
 
     // Create the new list entry node
-    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, tls);
+    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, *tls);
 
     // Check to see if the head is empty. If so, insert there
     if(pHead == NULL ) {

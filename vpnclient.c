@@ -25,8 +25,8 @@
 #define TCP 6
 #define UDP 17
 
-#define CERT_FILE "../certs/client-cert.pem"
-#define KEY_FILE  "../certs/client-key.pem"
+#define CERT_FILE "./certs/client-cert.pem"
+#define KEY_FILE  "./certs/client-key.pem"
 
 bool printVerboseDebug = false;
 bool printIPHeaders = false;
