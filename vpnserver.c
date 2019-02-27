@@ -250,7 +250,7 @@ int initTCPServer(int portNumber) {
  *                      process serving this destination IP
  *
  *****************************************************************************************/
-void tunSelected(int tunFD, SSL_CTX* tls_ctx, SSL_CTX* dtls_ctx) {
+void tunSelected(int tunFD) {
 
     char buff[BUFF_SIZE];
     struct sockaddr_in destAddr;
@@ -1118,11 +1118,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // TODO - File logging - report initialisation complete
-    printf("VPN Server Initialisation Complete.\n");
-    printf("************************************************************\n");
-
-    pipe(childParentPipe);
+   pipe(childParentPipe);
 
     //create SSL contexts for both TCP and UDP protocols
     SSL_CTX *tls_ctx;
@@ -1138,6 +1134,10 @@ int main(int argc, char *argv[]) {
         perror("Server UDP tls_init");
         exit(EXIT_FAILURE);
     }
+
+    // TODO - File logging - report initialisation complete
+    printf("VPN Server Initialisation Complete.\n");
+    printf("************************************************************\n");
 
     // Enter the main server loop
     while (1) {
@@ -1162,9 +1162,9 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, tls_ctx, dtls_ctx);
-        if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD, dtls_ctx);
-        if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD, tls_ctx);
+        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD);
+        if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD, &dtls_ctx);
+        if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD, &tls_ctx);
         if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientListenerSelected(mgmtSockFD);
         if (FD_ISSET(childParentPipe[0], &readFDSet)) childParentPipeSelected();
 
