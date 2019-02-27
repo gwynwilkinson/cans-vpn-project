@@ -122,7 +122,10 @@ int createTunDevice() {
         exit(EXIT_FAILURE);
     }
 
-    // TODO - File logging - Report TUN creation
+    // File logging - Report TUN creation
+
+    LOG(LOGFILE,"TUN %s interface configuration completed successfully",ifr.ifr_name);
+
     return (tunFD);
 }
 
@@ -162,13 +165,19 @@ int initUDPServer() {
         exit(EXIT_FAILURE);
     }
 
-    printf("Created UDP socket. FD = %d. Bound to IP = %s:%d\n",
+    //    printf("Created UDP socket. FD = %d. Bound to IP = %s:%d\n",
+    //           udpSockFD,
+    //           inet_ntoa(localAddr.sin_addr),
+    //           (int) ntohs(localAddr.sin_port));
+
+    // File Logging - Report UDP socket creation
+
+    LOG(BOTH,"Created UDP socket. FD = %d. Bound to IP = %s:%d\n",
            udpSockFD,
            inet_ntoa(localAddr.sin_addr),
-           (int) ntohs(localAddr.sin_port));
-
-    // TODO - File Logging - Report UDP socket creation
-
+	   (int) ntohs(localAddr.sin_port));
+    
+    
     return (udpSockFD);
 }
 
@@ -220,7 +229,9 @@ int initTCPServer(int portNumber) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Created TCP socket. FD = %d. Bound to IP = %s:%d\n",
+    // File Logging - Report TCP socket creation
+    
+    LOG(BOTH, "Created TCP socket. FD = %d. Bound to IP = %s:%d\n",
            tcpSockFD,
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
@@ -231,7 +242,7 @@ int initTCPServer(int portNumber) {
         exit(EXIT_FAILURE);
     }
 
-    // TODO - File Logging - Report TCP socket creation
+
 
     return (tcpSockFD);
 }
@@ -352,7 +363,9 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
 
     // Check if its a new client connection
     if (strncmp("Connection Request", buff, 18) == 0) {
-        fprintf(stdout, "New UDP client connection from %s:%d.\n",
+
+      // TODO - File Logging - Report new UDP Client Connection.
+      LOG(BOTH, "New UDP client connection from %s:%d.\n",
                 inet_ntoa(pPeerAddr->sin_addr),
                 ntohs(pPeerAddr->sin_port));
 
@@ -366,24 +379,27 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
                                   sizeof(struct sockaddr));
 
             if (printVerboseDebug) {
-                printf("Assigned IP %s to client\n", buff);
+	      LOG(BOTH, "Assigned IP %s to client\n", buff);
             }
+	    else{
+	      LOG(LOGFILE, "Assigned IP %s to client\n", buff);
+	    }
 
-            fprintf(stdout, "************************************************************\n");
+            LOG(BOTH, "************************************************************\n");
 
             // Add the peer address structure to the linked list.
             // 0 is used for the PIPE FD as this is unused for UDP connections
             insertTail(buff, UDP, pPeerAddr, 0, udpSockFD, 0);
         }
 
-        // TODO - File Logging - Report new UDP Client Connection.
+
 
         // Dont pass the new connection request to the TUN. Just return from the function.
         return;
     } else if (strncmp("Terminate UDP Connection", buff, 24) == 0) {
 
         // Client has requested to terminate the connection
-        fprintf(stdout, "UDP client %s:%d terminating \n",
+        LOG(BOTH, "UDP client %s:%d terminating \n",
                 inet_ntoa(pPeerAddr->sin_addr),
                 ntohs(pPeerAddr->sin_port));
 
@@ -400,10 +416,16 @@ void udpSocketSelected(int tunFD, int udpSockFD) {
     }
 
     if (printVerboseDebug) {
-        printf("UDP Tunnel->TUN - Source IP %s:%d - Length %d\n",
-               inet_ntoa(pPeerAddr->sin_addr),
-               (int) ntohs(pPeerAddr->sin_port),
-               (int) len);
+      LOG(BOTH,"UDP Tunnel->TUN - Source IP %s:%d - Length %d\n",
+	  inet_ntoa(pPeerAddr->sin_addr),
+	  (int) ntohs(pPeerAddr->sin_port),
+	  (int) len);
+    }
+    else{
+      LOG(LOGFILE,"UDP Tunnel->TUN - Source IP %s:%d - Length %d\n",
+	  inet_ntoa(pPeerAddr->sin_addr),
+	  (int) ntohs(pPeerAddr->sin_port),
+	  (int) len);
     }
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
@@ -496,27 +518,33 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
     } else if (len == 0) {
         // Connection has been closed. Kill the connection and
         // child process
-        // TODO - File Logging - Report TCP Client termination
-        printf("TCP Client %s:%d has closed the connection.\n",
-               inet_ntoa(pPeerAddr->sin_addr),
-               ntohs(pPeerAddr->sin_port));
+        // File Logging - Report TCP Client termination
 
-        // Find the unique remote TUN IP address in the linked list structure
-        // using the Peer IP and Port as a lookup.
-        strcpy(buff, findByPeerIPAddress(pPeerAddr));
-
-        write(childParentPipe[1], buff, sizeof(buff));
-
-        if (printVerboseDebug) {
-            printf("Killing Child PID %d - Closing connection FD %d \n", (int) getpid(), connectionFD);
-            printf("CHILD - Sending remote TUN IP %s to parent\n",buff);
-        }
-
-        close(connectionFD);
-        close(pipeFD);
-
-
-        exit(EXIT_SUCCESS);
+      
+      LOG(BOTH,"TCP Client %s:%d has closed the connection.\n",
+	     inet_ntoa(pPeerAddr->sin_addr),
+	     ntohs(pPeerAddr->sin_port));
+      
+      // Find the unique remote TUN IP address in the linked list structure
+      // using the Peer IP and Port as a lookup.
+      strcpy(buff, findByPeerIPAddress(pPeerAddr));
+      
+      write(childParentPipe[1], buff, sizeof(buff));
+      
+      if (printVerboseDebug) {
+	LOG(BOTH,"Killing Child PID %d - Closing connection FD %d \n", (int) getpid(), connectionFD);
+	LOG(BOTH,"CHILD - Sending remote TUN IP %s to parent\n",buff);
+      }
+      else{
+	LOG(LOGFILE,"Killing Child PID %d - Closing connection FD %d \n", (int) getpid(), connectionFD);
+	LOG(LOGFILE,"CHILD - Sending remote TUN IP %s to parent\n",buff);
+      }
+      
+      close(connectionFD);
+      close(pipeFD);
+      
+      
+      exit(EXIT_SUCCESS);
     }
 
     // Ignore IPv6 packets
@@ -645,8 +673,9 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     }
 
     // Check if its a new client connection
+    // File Logging - Report new TCP VPN connection
     if (strncmp("Connection Request", buff, 18) == 0) {
-        fprintf(stdout, "New TCP client connection from %s:%d. Initialisation Msg:- %s\n",
+        LOG(BOTH, "New TCP client connection from %s:%d. Initialisation Msg:- %s\n",
                 inet_ntoa(pPeerAddr->sin_addr),
                 ntohs(pPeerAddr->sin_port), buff);
 
@@ -659,24 +688,32 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
 
             if (len == -1) {
                 perror("TCP Send error");
+		LOG(LOGFILE,"TCP Send error.");
                 return;
             }
 
             if (printVerboseDebug) {
-                printf("Assigned IP %s to client\n", buff);
+	      LOG(BOTH,"Assigned IP %s to client\n", buff);
             }
+	    else{
+	      LOG(LOGFILE,"Assigned IP %s to client\n", buff);
+	    }
 
-            fprintf(stdout, "************************************************************\n");
+            LOG(BOTH, "************************************************************\n");
         }
 
-        // TODO - File Logging - Report new TCP VPN connection
+
 
         // Create a PIPE for communication between parent/child
         pipe(pipeFD);
 
         if (printVerboseDebug) {
-            printf("Created PIPE with FDs [%d] and [%d]\n", pipeFD[0], pipeFD[1]);
+	  LOG(BOTH,"Created PIPE with FDs [%d] and [%d]\n", pipeFD[0], pipeFD[1]);
         }
+	else{
+	  LOG(LOGFILE,"Created PIPE with FDs [%d] and [%d]\n", pipeFD[0], pipeFD[1]);
+	}
+	
 
 
         // Fork a new server instance to deal with this TCP connection
@@ -702,11 +739,16 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     } else {
         // Error. We should only be receiving new connection requests on this socket FD.
         if (printVerboseDebug) {
-            printf("Error! - Data (not a connection request) received on TCP Listener socket from %s:%d\n",
+	  LOG(BOTH,"Error! - Data (not a connection request) received on TCP Listener socket from %s:%d\n",
                    inet_ntoa(pPeerAddr->sin_addr),
                    ntohs(pPeerAddr->sin_port));
         }
-
+	else{
+	  LOG(LOGFILE,"Error! - Data (not a connection request) received on TCP Listener socket from %s:%d\n",
+	      inet_ntoa(pPeerAddr->sin_addr),
+	      ntohs(pPeerAddr->sin_port));
+	}
+	
         close(connectionFD);
     }
 }
@@ -740,7 +782,9 @@ void mgmtClientSocket( int connectionFD) {
         mgmtConnectionFD = 0;
         close(connectionFD);
 
-        // TODO - File Logging - Report termination of mgmt clien
+        // TODO - File Logging - Report termination of mgmt client.
+
+	LOG(LOGFILE,"Management Client has terminated\n");
         return;
     }
 
@@ -749,7 +793,7 @@ void mgmtClientSocket( int connectionFD) {
 
     if(jParsedJson == NULL) {
         // JSON parse error. Print an error and bail.
-        printf("Sever received invalid JSON string from Mgmt Client\n");
+      LOG(BOTH,"Sever received invalid JSON string from Mgmt Client\n");
         return;
     }
 
@@ -758,14 +802,20 @@ void mgmtClientSocket( int connectionFD) {
 
     // Handle the request
     if (printVerboseDebug) {
-        printf("Mgmt Client requested:- \"%s\"\n", json_object_get_string(jStringRequestType));
+      LOG(BOTH,"Mgmt Client requested:- \"%s\"\n", json_object_get_string(jStringRequestType));
     }
+    else{
+      LOG(LOGFILE,"Mgmt Client requested:- \"%s\"\n", json_object_get_string(jStringRequestType));
+    }
+    
 
     // Check what the Management Client requested,
     if (strcmp(json_object_get_string(jStringRequestType), "Current Connections") == 0) {
         // Request for Current Connection Information
 
-        // TODO - File Logging - Report connection data request
+        // File Logging - Report connection data request
+      
+      LOG(LOGFILE,"Received connection data request\n",jStringRequestType);
 
         json_object *jObject = json_object_new_object();
         json_object *jArray = json_object_new_array();
@@ -799,8 +849,11 @@ void mgmtClientSocket( int connectionFD) {
         json_object_object_add(jObject, "Connections", jArray);
 
         if(printVerboseDebug) {
-            printf("The JSON object created: %s\n", json_object_to_json_string(jObject));
+	  LOG(BOTH,"The JSON object created: %s\n", json_object_to_json_string(jObject));
         }
+	else{
+	  LOG(LOGFILE,"The JSON object created: %s\n", json_object_to_json_string(jObject));
+	}
 
         strcpy(buff, json_object_to_json_string(jObject));
 
@@ -809,12 +862,16 @@ void mgmtClientSocket( int connectionFD) {
 
         if ((len == 0) || (len == -1)) {
             // Error sending data
+	  LOG(LOGFILE,"Error sending data - TCP socket send\n");
             perror("TCP socket send");
         }
 
     } else if (strcmp(json_object_get_string(jStringRequestType), "Terminate Connection") == 0) {
 
         // TODO - Log termination of a client
+
+      LOG(LOGFILE,"Received Terminate Connection Request: %s\n",jStringRequestType);
+      
 
         // Request to terminate connection. Determine which index
         int index;
@@ -833,7 +890,7 @@ void mgmtClientSocket( int connectionFD) {
 
         pPeerAddr = getPidByIndex(index, &pid, &pTunIP, &sockFD);
 
-        printf("VPN Manager requested termination of connection for TUN IP %s. Peer address %s:%d\n",
+        LOG(BOTH,"VPN Manager requested termination of connection for TUN IP %s. Peer address %s:%d\n",
                pTunIP,
                inet_ntoa(pPeerAddr->sin_addr),
                ntohs(pPeerAddr->sin_port));
@@ -845,13 +902,16 @@ void mgmtClientSocket( int connectionFD) {
             if(kill(pid, SIGTERM) == 0) {
                 // Process killed successfully
                 jStringResponseCode = json_object_new_string("Success");
+		LOG(LOGFILE,"Process killed successfully\n");
 
                 // Delete the entry from the linked list
                 deleteEntryByTunIP(pTunIP);
+		LOG(LOGFILE,"Entry for tunIP: %\n",pTunIP);
 
             } else {
                 // Error in process termination
                 jStringResponseCode = json_object_new_string("Failure");
+		LOG(LOGFILE,"Error terminating process\n");
 
             }
 
@@ -873,13 +933,16 @@ void mgmtClientSocket( int connectionFD) {
                 perror("sendto");
 
                 // Error in process termination
+		LOG(LOGFILE,"Error in process termination.\n");
                 jStringResponseCode = json_object_new_string("Failure");
 
             } else {
                 // Process killed successfully
+	      LOG(LOGFILE,"Process terminated successfully.\n");
                 jStringResponseCode = json_object_new_string("Success");
 
                 // Delete the entry from the linked list
+		LOG(LOGFILE,"Entry %s deleted from list\n",pTunIP);
                 deleteEntryByTunIP(pTunIP);
             }
 
@@ -896,12 +959,13 @@ void mgmtClientSocket( int connectionFD) {
 
         if ((len == 0) || (len == -1)) {
             // Error sending data
+	  LOG(LOGFILE,"Error sending data - TCP socket send\n");
             perror("TCP socket send");
         }
 
 
     } else {
-        printf("UNKNOWN REQUEST %s\n", buff);
+        LOG(BOTH,"UNKNOWN REQUEST %s\n", buff);
     }
 }
 
@@ -940,38 +1004,49 @@ void mgmtClientListenerSelected(int mgmtSockFD) {
     }
 
     if (printVerboseDebug) {
-        printf("Connection FD for new management client connection is %d\n", connectionFD);
+      LOG(BOTH,"Connection FD for new management client connection is %d\n", connectionFD);
+    }
+    else{
+      LOG(LOGFILE,"Connection FD for new management client connection is %d\n", connectionFD);
     }
 
     bzero(buff, BUFF_SIZE);
     len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
 
     if (len == -1) {
+      LOG(LOGFILE,"TCP Rcv error.\n");
         perror("TCP Rcv error");
         return;
     } else if (len == 0) {
-        printf("Management Client %s:%d has closed the connection\n",
-               inet_ntoa(pPeerAddr->sin_addr),
-               ntohs(pPeerAddr->sin_port));
-
-        close(connectionFD);
-        return;
+      
+      LOG(BOTH,"Management Client %s:%d has closed the connection\n",
+	  inet_ntoa(pPeerAddr->sin_addr),
+	  ntohs(pPeerAddr->sin_port));
+      
+      close(connectionFD);
+      return;
     }
 
     // Check if its a new client connection
     if (strncmp("MGMT Connection Request", buff, 18) == 0) {
-        fprintf(stdout, "New Management client connection from %s:%d. Initialisation Msg:- %s\n",
-                inet_ntoa(pPeerAddr->sin_addr),
-                ntohs(pPeerAddr->sin_port), buff);
+      // TODO - File Logging - Report Mgmt Client connection
+      LOG(BOTH, "New Management client connection from %s:%d. Initialisation Msg:- %s\n",
+	      inet_ntoa(pPeerAddr->sin_addr),
+	      ntohs(pPeerAddr->sin_port), buff);
+      
 
-        // TODO - File Logging - Report Mgmt Client connection
     } else {
         // Error. We should only be receiving new connection requests on this socket FD.
         if (printVerboseDebug) {
-            printf("Error! - Data (not a connection request) received on Management Listener socket from %s:%d\n",
-                   inet_ntoa(pPeerAddr->sin_addr),
-                   ntohs(pPeerAddr->sin_port));
+	  LOG(BOTH,"Error! - Data (not a connection request) received on Management Listener socket from %s:%d\n",
+	      inet_ntoa(pPeerAddr->sin_addr),
+	      ntohs(pPeerAddr->sin_port));
         }
+	else{
+	  LOG(LOGFILE,"Error! - Data (not a connection request) received on Management Listener socket from %s:%d\n",
+	      inet_ntoa(pPeerAddr->sin_addr),
+	      ntohs(pPeerAddr->sin_port));
+	}
 
         close(connectionFD);
     }
@@ -1101,7 +1176,10 @@ void childParentPipeSelected(){
     buff[len] = '\0';
 
     if(printVerboseDebug) {
-        printf("Parent received request to delete TUN IP %s from linked list!\n", buff);
+      LOG(BOTH,"Parent received request to delete TUN IP %s from linked list!\n", buff);
+    }
+    else{
+      LOG(LOGFILE,"Parent received request to delete TUN IP %s from linked list!\n", buff);
     }
 
     // Delete the child process entry from the linked list
