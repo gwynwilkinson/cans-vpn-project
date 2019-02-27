@@ -398,20 +398,20 @@ void udpSocketSelected(int tunFD, int udpSockFD, SSL_CTX* dtls_ctx) {
             // TODO - SSL_set_fd and SSL_accept go here?
 
             /*Create new ssl object*/
-            SSL *dtls = SSL_new(dtls_ctx);
+            SSL *pDtls = SSL_new(dtls_ctx);
 
-            if (!dtls) {
-                perror("Error creating SSL structure.");
+            if (!pDtls) {
+                perror("Error creating UDP SSL structure.");
                 return;
             }
 
             /* Bind the ssl object with the socket*/
-            SSL_set_fd(dtls, udpSockFD);
+            SSL_set_fd(pDtls, udpSockFD);
 
             /*Do the SSL Handshake*/
-            err=SSL_accept(dtls);
+            err=SSL_accept(pDtls);
 
-            insertTail(buff, UDP, pPeerAddr, 0, udpSockFD, &dtls);
+            insertTail(buff, UDP, pPeerAddr, 0, udpSockFD, pDtls);
         }
 
         // TODO - SSL_set_fd and SSL_accept go here?
@@ -642,7 +642,7 @@ void vpnChildSubProcess(int udpSockFD, int tcpSockFD, int mgmtSockFD, struct soc
  *                      future data from this connection
  *
  *****************************************************************************************/
-void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtSockFD, SSL_CTX* tls_ctx) {
+void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmtSockFD, SSL_CTX *tls_ctx) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_in *pPeerAddr;
@@ -651,7 +651,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     int connectionFD;
     int pipeFD[2];
     int pid;
-    SSL *tls;
+    SSL *ssl = NULL;
     int err;
 
     // Allocate the memory for the peerAddr structure
@@ -675,23 +675,31 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         printf("Connection FD for new connection is %d\n", connectionFD);
     }
 
+    // TODO - Accordding to Seed book 19.9 and 19.11 listings, I think we only need to do this once per server, not per connection
     /*Create new ssl object*/
-    tls=SSL_new(tls_ctx);
+    ssl=SSL_new(tls_ctx);
 
-    if (!tls) {
-        perror("Error creating SSL structure.");
+    if (!ssl) {
+        perror("Error creating TCP SSL structure.");
         return;
     }
 
     /* Bind the ssl object with the socket*/
-    SSL_set_fd(tls, connectionFD);
+    SSL_set_fd(ssl, connectionFD);
 
     /*Do the SSL Handshake*/
-    err=SSL_accept(tls);
+    err=SSL_accept(ssl);
 
+    if(err == -1) {
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
+        return;
+    }
 
     bzero(buff, BUFF_SIZE);
-    len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
+//    len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
+    len = SSL_read(ssl, buff, BUFF_SIZE - 1);
 
     if (len == -1) {
         // This shouldnt really happen. Close the connection FD anyway
@@ -715,7 +723,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
 
         // Ensure we got a client address
         if (buff[0] != '\0') {
-            len = SSL_write(tls, buff, strlen(buff));
+            len = SSL_write(ssl, buff, strlen(buff));
             //len = send(connectionFD, buff, strlen(buff), 0);
 
             if (len == -1) {
@@ -731,13 +739,8 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         }
 
         // TODO - File Logging - Report new TCP VPN connection
-
-
-
         // Create a PIPE for communication between parent/child
         pipe(pipeFD);
-
-
 
         if (printVerboseDebug) {
             printf("Created PIPE with FDs [%d] and [%d]\n", pipeFD[0], pipeFD[1]);
@@ -747,14 +750,14 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         // so that the parent process can determine which child needs to handle
         // the TUN->tunnel communication. Also store the socket connectionFD
         // so that the child process can send the message to the correct connection
-        insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, &tls);
+        insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, ssl);
 
         // Fork a new server instance to deal with this TCP connection
         if ((pid = fork()) == 0) {
             // This is the Child process
 
             // Handle the child process sub-function
-            vpnChildSubProcess(udpSockFD, tcpSockFD, mgmtSockFD, pPeerAddr, pipeFD, connectionFD, tunFD, tls);
+            vpnChildSubProcess(udpSockFD, tcpSockFD, mgmtSockFD, pPeerAddr, pipeFD, connectionFD, tunFD, ssl);
 
         } else {
             // This is the Parent process
@@ -1121,16 +1124,19 @@ int main(int argc, char *argv[]) {
    pipe(childParentPipe);
 
     //create SSL contexts for both TCP and UDP protocols
-    SSL_CTX *tls_ctx;
-    SSL_CTX *dtls_ctx;
+    SSL_CTX *tls_ctx = NULL;
+    SSL_CTX *dtls_ctx = NULL;
 
     //init both contexts using cert/key files
-    if(tls_ctx_init(tls_ctx, TCP, SSL_VERIFY_NONE, CERT_FILE, KEY_FILE) == -1){
+    tls_ctx = tls_ctx_init(TCP, SSL_VERIFY_NONE, CERT_FILE, KEY_FILE);
+    if( tls_ctx == NULL)
+    {
         perror("Server TCP tls_init");
         exit(EXIT_FAILURE);
     }
 
-    if(tls_ctx_init(dtls_ctx, UDP, SSL_VERIFY_NONE, CERT_FILE, KEY_FILE) == -1){
+    dtls_ctx = tls_ctx_init(UDP, SSL_VERIFY_NONE, CERT_FILE, KEY_FILE);
+    if(dtls_ctx == NULL) {
         perror("Server UDP tls_init");
         exit(EXIT_FAILURE);
     }
@@ -1163,8 +1169,8 @@ int main(int argc, char *argv[]) {
         }
 
         if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD);
-        if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD, &dtls_ctx);
-        if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD, &tls_ctx);
+        if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD, dtls_ctx);
+        if (FD_ISSET(tcpSockFD, &readFDSet)) tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD, tls_ctx);
         if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientListenerSelected(mgmtSockFD);
         if (FD_ISSET(childParentPipe[0], &readFDSet)) childParentPipeSelected();
 

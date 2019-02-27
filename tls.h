@@ -14,4 +14,4 @@ typedef struct {
 } tls_session;
 
 int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP, char *certfile, char *keyfile);
-int tls_ctx_init(SSL_CTX *ctx, int protocol, int verify, char *certfile, char *keyfile);
+SSL_CTX * tls_ctx_init( int protocol, int verify, char *certfile, char *keyfile);

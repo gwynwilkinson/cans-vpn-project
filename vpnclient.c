@@ -54,6 +54,9 @@ char protocolType[4] = "";
 struct sockaddr_in peerAddr;
 int tunFD, sockFD;
 
+//Function prototypes
+void performHandshake(tls_session *pClientSession, int sockFD);
+
 /*****************************************************************************************
  *
  * Function:            createTunDevice()
@@ -118,7 +121,7 @@ int createTunDevice() {
  *                      remote VPN server on specified port
  *
  *****************************************************************************************/
-int connectToUDPServer() {
+int connectToUDPServer( tls_session *pClientSession) {
 
     struct sockaddr_in localAddr;
     int udpSockFD;
@@ -189,7 +192,7 @@ int connectToUDPServer() {
  *                      remote VPN server on specified port
  *
  *****************************************************************************************/
-int connectToTCPServer() {
+int connectToTCPServer(tls_session *pClientSession) {
 
     struct sockaddr_in localAddr;
     int tcpSockFD;
@@ -228,10 +231,14 @@ int connectToTCPServer() {
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
 
+    // Perform TLS Handshake
+    performHandshake(pClientSession, tcpSockFD);
+
     printf("Attempting connection to server\n");
 
     // Send the connection request to the server
-    len = send(tcpSockFD, hello, strlen(hello), 0);
+//    len = send(tcpSockFD, hello, strlen(hello), 0);
+    len = SSL_write(pClientSession->ssl, hello, strlen(hello));
 
     if (len == -1) {
         // Connection error
@@ -240,7 +247,8 @@ int connectToTCPServer() {
     }
 
     // Wait for the server to assign a unique TUN IP address
-    len = recv(tcpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0);
+//    len = recv(tcpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0);
+    len = SSL_read(pClientSession->ssl, buff, MAX_IP_ADDRESS_LENGTH);
 
     if (len == -1) {
         // Connection error
@@ -260,6 +268,41 @@ int connectToTCPServer() {
 
 }
 
+
+/*****************************************************************************************
+ *
+ * Function:            performHandshake()
+ *
+ * Description:         Binds the the socket File description to the tls session and
+ *                      initiates the handshake.
+ *
+ *****************************************************************************************/
+void performHandshake(tls_session *pClientSession, int sockFD) {
+
+    int sslError;
+
+    printf("Perform Handshake\n");
+
+    /*Bind the socket to the SSL structure*/
+    sslError = SSL_set_fd(pClientSession->ssl, sockFD);
+    if (sslError != 1) {
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
+        exit(EXIT_FAILURE);
+    }
+
+    /* Connect to the server, SSL layer.*/
+    if (SSL_connect(pClientSession->ssl) != 1) {
+        perror("Client SSL_connect");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("SSL connection is successful\n");
+    printf("SSL connection using %s\n", SSL_get_cipher(pClientSession->ssl));
+}
+
+
 /*****************************************************************************************
  *
  * Function:            tunSelected()
@@ -268,7 +311,7 @@ int connectToTCPServer() {
  *                      Send to the UDP or TCP socket (tunnel).
  *
  *****************************************************************************************/
-void tunSelected(int tunFD, int sockFD, int protocol, SSL* ssl) {
+void tunSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
 
@@ -284,8 +327,8 @@ void tunSelected(int tunFD, int sockFD, int protocol, SSL* ssl) {
 
     if (printVerboseDebug) {
         printf("TUN->%s Tunnel- Length:- %d\n",
-                protocol == UDP ? "UDP" : "TCP",
-                (int) len);
+               protocol == UDP ? "UDP" : "TCP",
+               (int) len);
     }
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
@@ -326,7 +369,7 @@ void tunSelected(int tunFD, int sockFD, int protocol, SSL* ssl) {
  *                      device (application)
  *
  *****************************************************************************************/
-void socketSelected(int tunFD, int sockFD, int protocol, SSL* ssl) {
+void socketSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_storage remoteAddress;
@@ -334,12 +377,12 @@ void socketSelected(int tunFD, int sockFD, int protocol, SSL* ssl) {
     struct iphdr *pIpHeader = (struct iphdr *) buff;
 
     bzero(buff, BUFF_SIZE);
-    if(protocol == UDP) {
+    if (protocol == UDP) {
         //len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
-        len = SSL_read (ssl, buff, BUFF_SIZE);
+        len = SSL_read(ssl, buff, BUFF_SIZE);
     } else {
         //len = recv(sockFD, buff, BUFF_SIZE, 0);
-        len = SSL_read (ssl, buff, BUFF_SIZE);
+        len = SSL_read(ssl, buff, BUFF_SIZE);
         // Get the peer address info
         getpeername(sockFD, (struct sockaddr *) &remoteAddress, &addrSize);
     }
@@ -562,7 +605,10 @@ int main(int argc, char *argv[]) {
 
     struct sigaction sa;
     int protocol;
-    int ssl_err;
+    int sslError;
+    tls_session clientSession;
+
+    bzero(&clientSession, sizeof(tls_session));
 
     // Initialise command line argument buffers
     serverIP[0] = '\0';
@@ -585,45 +631,31 @@ int main(int argc, char *argv[]) {
         protocol = TCP;
     }
 
+    // Initialise the (D)TLS context based on the specified protocol
+    if (tls_init(&clientSession, false, protocol, SSL_VERIFY_NONE, serverIP, CERT_FILE, KEY_FILE) == -1) {
+        perror("Client tls_init");
+        exit(EXIT_FAILURE);
+    }
+
     // Client can be either UDP or TCP, start the correct connection
-    if (protocol == UDP ) {
-        sockFD = connectToUDPServer();
+    if (protocol == UDP) {
+        sockFD = connectToUDPServer(&clientSession);
 
         // For UDP we need to trap any Ctrl-C so that we can send a termination
         // message to the server so that they can clean up resources on their end
         sa.sa_handler = sigIntHandler;
         sigemptyset(&sa.sa_mask);
 
-        if(sigaction(SIGINT, &sa, NULL) == -1) {
+        if (sigaction(SIGINT, &sa, NULL) == -1) {
             perror("Server sigaction");
             exit(EXIT_FAILURE);
         }
     } else {
-        sockFD = connectToTCPServer();
+        sockFD = connectToTCPServer(&clientSession);
     }
 
+    // Create the TUN device
     tunFD = createTunDevice();
-
-
-    tls_session client_session;
-
-
-    if(tls_init(&client_session, false, protocol, SSL_VERIFY_NONE, serverIP, CERT_FILE, KEY_FILE) == -1){
-        perror("Client tls_init");
-        exit(EXIT_FAILURE);
-    }
-    /*Bind the socket to the SSL structure*/
-    SSL_set_fd(client_session.ssl,sockFD);
-
-    /*Connect to the server, SSL layer.*/
-    if(SSL_connect(client_session.ssl) != 1){
-        perror("Client SSL_connect");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("SSL connection is successful\n");
-    printf ("SSL connection using %s\n", SSL_get_cipher(client_session.ssl));
-
 
     printf("VPN Client Initialisation Complete.\n");
     printf("************************************************************\n");
@@ -645,12 +677,12 @@ int main(int argc, char *argv[]) {
 
         select(FD_SETSIZE, &readFDSet, NULL, NULL, NULL);
 
-        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, sockFD, protocol, client_session.ssl);
+        if (FD_ISSET(tunFD, &readFDSet)) tunSelected(tunFD, sockFD, protocol, clientSession.ssl);
 
         if (protocol == UDP) {
-            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, UDP, client_session.ssl);
+            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, UDP, clientSession.ssl);
         } else {
-            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, TCP, client_session.ssl);
+            if (FD_ISSET(sockFD, &readFDSet)) socketSelected(tunFD, sockFD, TCP, clientSession.ssl);
         }
     }
 }
