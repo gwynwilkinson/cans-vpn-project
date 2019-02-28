@@ -143,12 +143,12 @@ int connectToUDPServer( tls_session *pClientSession) {
         exit(EXIT_FAILURE);
     }
 
+
     // Obtain the local socket address information
     saLen = sizeof(localAddr);
 
-    // Send a hello message to "connect" with the VPN server
-    sendto(udpSockFD, hello, strlen(hello), 0,
-           (struct sockaddr *) &peerAddr, sizeof(peerAddr));
+    // Calling connect with UDP socket doesn't send anything, but returns FD
+    connect(udpSockFD, (struct sockaddr *) &peerAddr, sizeof(peerAddr));
 
     if (getsockname(udpSockFD, (struct sockaddr *) &localAddr, &saLen) == -1) {
         perror("getsockname");
@@ -162,9 +162,24 @@ int connectToUDPServer( tls_session *pClientSession) {
 
     printf("Attempting connection to server\n");
 
+    // Perform TLS Handshake
+    performHandshake(pClientSession, udpSockFD);
+
+    printf("Attempting connection to server\n");
+
+    // Send the connection request to the server
+//    len = send(tcpSockFD, hello, strlen(hello), 0);
+    len = SSL_write(pClientSession->ssl, hello, strlen(hello));
+
+    if (len == -1) {
+        // Connection error
+        perror("UDP Connection Error");
+        exit(EXIT_FAILURE);
+    }
+
     // Wait for the server to assign a unique TUN IP address
-    len = recvfrom(udpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0,
-                   (struct sockaddr *) &peerAddr, &saLen);
+//    len = recv(tcpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0);
+    len = SSL_read(pClientSession->ssl, buff, MAX_IP_ADDRESS_LENGTH);
 
     if (len == -1) {
         // Connection error
@@ -636,6 +651,7 @@ int main(int argc, char *argv[]) {
         perror("Client tls_init");
         exit(EXIT_FAILURE);
     }
+
 
     // Client can be either UDP or TCP, start the correct connection
     if (protocol == UDP) {

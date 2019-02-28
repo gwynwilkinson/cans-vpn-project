@@ -353,6 +353,8 @@ void udpSocketSelected(int tunFD, int udpSockFD, SSL_CTX* dtls_ctx) {
         exit(EXIT_FAILURE);
     }
 
+    accept(udpSockFD, (struct sockaddr*) pPeerAddr, &addrSize);
+
     bzero(buff, BUFF_SIZE);
 
     // TODO - ssl_read() goes here... somewhere. need a way to differentiate
@@ -365,7 +367,7 @@ void udpSocketSelected(int tunFD, int udpSockFD, SSL_CTX* dtls_ctx) {
                 inet_ntoa(pPeerAddr->sin_addr),
                 ntohs(pPeerAddr->sin_port));
 
-        // Determine if this is a reconnection from the same UDP client. If so,
+        // Determine if this is a reconnection from a known UDP client. If so,
         // we will need to update the port number for the connection
         if (updatePeerAddress(pPeerAddr, buff) == false) {
             // Send back to the client a unique IP address.
