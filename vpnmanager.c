@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
     // Connect to the Server.
     mgmtSockFD = connectToTCPServer();
 
-    tls_session client_session;
+    tlsSession client_session;
 
     if(tls_init(&client_session, false, TCP, SSL_VERIFY_NONE, SERVER_IP, CERT_FILE, KEY_FILE) == -1){
         perror("Client tls_init");

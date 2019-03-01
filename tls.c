@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -19,6 +20,10 @@
 #ifndef UDP
 #define UDP 17
 #endif
+
+#define COOKIE_SECRET_LENGTH 16
+unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
+int cookie_initialized=0;
 
 SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile){
 
@@ -80,7 +85,7 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile){
 }
 
 
-int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP, char *certfile, char *keyfile){
+int tls_init(tlsSession* session, bool isServer, int protocol, int verify, char *serverIP, char *certfile, char *keyfile){
 
     SSL_METHOD *method = NULL;
 
@@ -161,4 +166,156 @@ int tls_init(tls_session* session, bool isServer, int protocol, int verify, char
         SSL_set_mode(session->ssl, SSL_MODE_AUTO_RETRY);
     }
 return 0;
+}
+
+// TODO - Reference this propertly. Cookie code taken from - https://github.com/nplab/DTLS-Examples/blob/master/src/dtls_udp_chargen.c
+int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len)
+{
+    unsigned char *buffer, result[EVP_MAX_MD_SIZE];
+    unsigned int length = 0, resultlength;
+    union {
+        struct sockaddr_storage ss;
+        struct sockaddr_in6 s6;
+        struct sockaddr_in s4;
+    } peer;
+
+    /* Initialize a random secret */
+    if (!cookie_initialized)
+    {
+        if (!RAND_bytes(cookie_secret, COOKIE_SECRET_LENGTH))
+        {
+            printf("error setting random cookie secret\n");
+            return 0;
+        }
+        cookie_initialized = 1;
+    }
+
+    /* Read peer information */
+    (void) BIO_dgram_get_peer(SSL_get_rbio(ssl), &peer);
+
+    /* Create buffer with peer's address and port */
+    length = 0;
+    switch (peer.ss.ss_family) {
+        case AF_INET:
+            length += sizeof(struct in_addr);
+            break;
+        case AF_INET6:
+            length += sizeof(struct in6_addr);
+            break;
+        default:
+            OPENSSL_assert(0);
+            break;
+    }
+    length += sizeof(in_port_t);
+    buffer = (unsigned char*) OPENSSL_malloc(length);
+
+    if (buffer == NULL)
+    {
+        printf("out of memory\n");
+        return 0;
+    }
+
+    switch (peer.ss.ss_family) {
+        case AF_INET:
+            memcpy(buffer,
+                   &peer.s4.sin_port,
+                   sizeof(in_port_t));
+            memcpy(buffer + sizeof(peer.s4.sin_port),
+                   &peer.s4.sin_addr,
+                   sizeof(struct in_addr));
+            break;
+        case AF_INET6:
+            memcpy(buffer,
+                   &peer.s6.sin6_port,
+                   sizeof(in_port_t));
+            memcpy(buffer + sizeof(in_port_t),
+                   &peer.s6.sin6_addr,
+                   sizeof(struct in6_addr));
+            break;
+        default:
+            OPENSSL_assert(0);
+            break;
+    }
+
+    /* Calculate HMAC of buffer using the secret */
+    HMAC(EVP_sha1(), (const void*) cookie_secret, COOKIE_SECRET_LENGTH,
+         (const unsigned char*) buffer, length, result, &resultlength);
+    OPENSSL_free(buffer);
+
+    memcpy(cookie, result, resultlength);
+    *cookie_len = resultlength;
+
+    return 1;
+}
+
+int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int cookie_len)
+{
+    unsigned char *buffer, result[EVP_MAX_MD_SIZE];
+    unsigned int length = 0, resultlength;
+    union {
+        struct sockaddr_storage ss;
+        struct sockaddr_in6 s6;
+        struct sockaddr_in s4;
+    } peer;
+
+    /* If secret isn't initialized yet, the cookie can't be valid */
+    if (!cookie_initialized)
+        return 0;
+
+    /* Read peer information */
+    (void) BIO_dgram_get_peer(SSL_get_rbio(ssl), &peer);
+
+    /* Create buffer with peer's address and port */
+    length = 0;
+    switch (peer.ss.ss_family) {
+        case AF_INET:
+            length += sizeof(struct in_addr);
+            break;
+        case AF_INET6:
+            length += sizeof(struct in6_addr);
+            break;
+        default:
+            OPENSSL_assert(0);
+            break;
+    }
+    length += sizeof(in_port_t);
+    buffer = (unsigned char*) OPENSSL_malloc(length);
+
+    if (buffer == NULL)
+    {
+        printf("out of memory\n");
+        return 0;
+    }
+
+    switch (peer.ss.ss_family) {
+        case AF_INET:
+            memcpy(buffer,
+                   &peer.s4.sin_port,
+                   sizeof(in_port_t));
+            memcpy(buffer + sizeof(in_port_t),
+                   &peer.s4.sin_addr,
+                   sizeof(struct in_addr));
+            break;
+        case AF_INET6:
+            memcpy(buffer,
+                   &peer.s6.sin6_port,
+                   sizeof(in_port_t));
+            memcpy(buffer + sizeof(in_port_t),
+                   &peer.s6.sin6_addr,
+                   sizeof(struct in6_addr));
+            break;
+        default:
+            OPENSSL_assert(0);
+            break;
+    }
+
+    /* Calculate HMAC of buffer using the secret */
+    HMAC(EVP_sha1(), (const void*) cookie_secret, COOKIE_SECRET_LENGTH,
+         (const unsigned char*) buffer, length, result, &resultlength);
+    OPENSSL_free(buffer);
+
+    if (cookie_len == resultlength && memcmp(result, cookie, resultlength) == 0)
+        return 1;
+
+    return 0;
 }

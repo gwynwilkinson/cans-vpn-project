@@ -1,3 +1,6 @@
+#ifndef VPN_TEST_CODE_TLS_H
+#define VPN_TEST_CODE_TLS_H
+
 #include <arpa/inet.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -11,7 +14,12 @@ typedef struct {
     SSL_CTX *ctx;
     SSL *ssl;
     BIO *bio;
-} tls_session;
+} tlsSession;
 
-int tls_init(tls_session* session, bool isServer, int protocol, int verify, char *serverIP, char *certfile, char *keyfile);
+
+int tls_init(tlsSession* session, bool isServer, int protocol, int verify, char *serverIP, char *certfile, char *keyfile);
 SSL_CTX * tls_ctx_init( int protocol, int verify, char *certfile, char *keyfile);
+int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len);
+int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int cookie_len);
+
+#endif //VPN_TEST_CODE_TLS_H

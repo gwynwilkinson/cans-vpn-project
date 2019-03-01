@@ -7,6 +7,7 @@
 #include "list.h"
 #include "vpnserver.h"
 #include "sock.h"
+#include "tls.h"
 
 /*****************************************************************************************
  *
@@ -16,7 +17,7 @@
  *                      return a pointer to it.
  *
  *****************************************************************************************/
-struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD, SSL *pTls) {
+struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD, tlsSession *pTLSSession) {
 
     // Allocate the memory for the new list entry node.
     struct listEntry *pNewEntry  = (struct listEntry*)malloc(sizeof(struct listEntry));
@@ -35,7 +36,7 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
     pNewEntry->pPeerAddress = pPeerAddr;
     pNewEntry->connectionFD = connectionFD;
     pNewEntry->pipeFD = pipFD;
-    pNewEntry->pTLS = pTls;
+    pNewEntry->pTLSSession = pTLSSession;
 
     // Initialise the previous and next pointers
     pNewEntry->prev = NULL;
@@ -52,13 +53,13 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
  *                      the list..
  *
  *****************************************************************************************/
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, SSL *pTls) {
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, tlsSession *pTLSSession) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Create the new list entry node
-    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, pTls);
+    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, pTLSSession);
 
     // Check to see if the head is empty. If so, insert there
     if(pHead == NULL ) {
@@ -218,7 +219,7 @@ void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr) {
  *                      address in string format. EG ("10.4.0.1")
  *
  *****************************************************************************************/
-struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL **ppTls) {
+struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, tlsSession **ppTLSSession) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
@@ -249,7 +250,7 @@ struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeF
     // Set the PIPE FD
     *pPipeFD = pCurrent->pipeFD;
 
-    *ppTls = pCurrent->pTLS;
+    *ppTLSSession = pCurrent->pTLSSession;
 
     return(pCurrent->pPeerAddress);
 }
@@ -262,25 +263,27 @@ struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeF
  *                      address passed in a sockaddr_in structure.
  *
  *****************************************************************************************/
-char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr) {
+char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr, tlsSession **ppClientSession) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Check for empty list
     if(pHead == NULL) {
-        return false;
+        return NULL;
     }
 
     while(sockCmpAddr(pPeerAddr, pCurrent->pPeerAddress) != 0) {
         // Check to see if this was the last node
         if (pCurrent->next == NULL) {
-            return false;
+            return NULL;
         } else {
             // Move to next node
             pCurrent = pCurrent->next;
         }
     }
+
+    *ppClientSession = pCurrent->pTLSSession;
 
     return(pCurrent->tunIP);
 }

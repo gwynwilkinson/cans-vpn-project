@@ -55,7 +55,7 @@ struct sockaddr_in peerAddr;
 int tunFD, sockFD;
 
 //Function prototypes
-void performHandshake(tls_session *pClientSession, int sockFD);
+void performHandshake(tlsSession *pClientSession, int sockFD);
 
 /*****************************************************************************************
  *
@@ -121,7 +121,7 @@ int createTunDevice() {
  *                      remote VPN server on specified port
  *
  *****************************************************************************************/
-int connectToUDPServer( tls_session *pClientSession) {
+int connectToUDPServer( tlsSession *pClientSession) {
 
     struct sockaddr_in localAddr;
     int udpSockFD;
@@ -142,7 +142,6 @@ int connectToUDPServer( tls_session *pClientSession) {
         perror("UDP Socket Allocation");
         exit(EXIT_FAILURE);
     }
-
 
     // Obtain the local socket address information
     saLen = sizeof(localAddr);
@@ -165,7 +164,7 @@ int connectToUDPServer( tls_session *pClientSession) {
     // Perform TLS Handshake
     performHandshake(pClientSession, udpSockFD);
 
-    printf("Attempting connection to server\n");
+    printf("Attempting connection to UDP server\n");
 
     // Send the connection request to the server
 //    len = send(tcpSockFD, hello, strlen(hello), 0);
@@ -176,6 +175,8 @@ int connectToUDPServer( tls_session *pClientSession) {
         perror("UDP Connection Error");
         exit(EXIT_FAILURE);
     }
+
+    printf("Waiting for response from server\n");
 
     // Wait for the server to assign a unique TUN IP address
 //    len = recv(tcpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0);
@@ -207,7 +208,7 @@ int connectToUDPServer( tls_session *pClientSession) {
  *                      remote VPN server on specified port
  *
  *****************************************************************************************/
-int connectToTCPServer(tls_session *pClientSession) {
+int connectToTCPServer(tlsSession *pClientSession) {
 
     struct sockaddr_in localAddr;
     int tcpSockFD;
@@ -249,7 +250,7 @@ int connectToTCPServer(tls_session *pClientSession) {
     // Perform TLS Handshake
     performHandshake(pClientSession, tcpSockFD);
 
-    printf("Attempting connection to server\n");
+    printf("Attempting connection to TCP server\n");
 
     // Send the connection request to the server
 //    len = send(tcpSockFD, hello, strlen(hello), 0);
@@ -292,7 +293,7 @@ int connectToTCPServer(tls_session *pClientSession) {
  *                      initiates the handshake.
  *
  *****************************************************************************************/
-void performHandshake(tls_session *pClientSession, int sockFD) {
+void performHandshake(tlsSession *pClientSession, int sockFD) {
 
     int sslError;
 
@@ -621,9 +622,9 @@ int main(int argc, char *argv[]) {
     struct sigaction sa;
     int protocol;
     int sslError;
-    tls_session clientSession;
+    tlsSession clientSession;
 
-    bzero(&clientSession, sizeof(tls_session));
+    bzero(&clientSession, sizeof(tlsSession));
 
     // Initialise command line argument buffers
     serverIP[0] = '\0';

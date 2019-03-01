@@ -3,6 +3,7 @@
 # include <stdbool.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include "tls.h"
 
 struct listEntry {
     char tunIP[17];                         // String containing IP of remote TUN
@@ -11,14 +12,14 @@ struct listEntry {
     struct sockaddr_in *pPeerAddress;       // Peer address structure for UDP connection
     int pipeFD;                             // FD of PIPE for child process
     int connectionFD;                       // socketFD (TCP or UDP)
-    SSL* pTLS;
+    tlsSession *pTLSSession;
     struct listEntry* next;
     struct listEntry* prev;
 };
 
-struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, SSL **ppTls);
-char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr);
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, SSL *pTls);
+struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, tlsSession **ppTLSSession);
+char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr, tlsSession **ppTLSSession);
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, tlsSession *pTLSSession);
 bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]);
 void deleteEntryByTunIP(char *pTunIP);
 void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr);
