@@ -290,44 +290,38 @@ char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr, tlsSession **ppClientSe
 
 /*****************************************************************************************
  *
- * Function:            updatePeerAddress()
+ * Function:            findUDPSession()
  *
- * Description:         Finds an existing entry in the linked list
- *                      and updates it with a new Peer Address
- *                      sockaddr_in structure.
- *
- *                      Returns 'true' if an entry was updated.
- *                      Returns 'false' if the entry was not found.
+ * Description:         Only one UDP client is supported at this time. Find the session associated
+ *                      to it and return the DTLS information and Peer Address structures.
  *
  *****************************************************************************************/
-bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]) {
+tlsSession *findUDPSession(struct sockaddr_in **ppPeerAddr) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Check for empty list
     if(pHead == NULL) {
-        return false;
+        printf("findIPAddress() - Head == NULL\n");
+        return NULL;
     }
 
-    while(sockCmpAddr(pNewPeerAddress, pCurrent->pPeerAddress) != 0) {
+    // Compare the TUN IPs
+    while(pCurrent->protocol != UDP) {
         // Check to see if this was the last node
         if (pCurrent->next == NULL) {
-            return false;
+            return NULL;
         } else {
             // Move to next node
             pCurrent = pCurrent->next;
         }
     }
 
-    // Free the memory for the old structure
-    free(pCurrent->pPeerAddress);
-
-    pCurrent->pPeerAddress = pNewPeerAddress;
-    strcpy(pTunIP,pCurrent->tunIP);
-    return true;
+    // Found the list entry for this IP. Return the TLS information
+    *ppPeerAddr = pCurrent->pPeerAddress;
+    return(pCurrent->pTLSSession);
 }
-
 /*****************************************************************************************
  *
  * Function:            getDateTime()

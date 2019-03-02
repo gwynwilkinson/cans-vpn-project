@@ -8,18 +8,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include "tls.h"
-
-#ifndef ICMP
-#define ICMP 1
-#endif
-
-#ifndef TCP
-#define TCP 6
-#endif
-
-#ifndef UDP
-#define UDP 17
-#endif
+#include "vpnserver.h"
 
 #define COOKIE_SECRET_LENGTH 16
 unsigned char cookie_secret[COOKIE_SECRET_LENGTH];

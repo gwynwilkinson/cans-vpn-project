@@ -19,6 +19,7 @@ struct listEntry {
 
 struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, tlsSession **ppTLSSession);
 char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr, tlsSession **ppTLSSession);
+tlsSession *findUDPSession();
 void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, tlsSession *pTLSSession);
 bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]);
 void deleteEntryByTunIP(char *pTunIP);

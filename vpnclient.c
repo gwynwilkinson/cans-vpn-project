@@ -53,6 +53,7 @@ char protocolType[4] = "";
 
 struct sockaddr_in peerAddr;
 int tunFD, sockFD;
+tlsSession clientSession;
 
 //Function prototypes
 void performHandshake(tlsSession *pClientSession, int sockFD);
@@ -399,9 +400,10 @@ void socketSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
     } else {
         //len = recv(sockFD, buff, BUFF_SIZE, 0);
         len = SSL_read(ssl, buff, BUFF_SIZE);
-        // Get the peer address info
-        getpeername(sockFD, (struct sockaddr *) &remoteAddress, &addrSize);
     }
+
+    // Get the peer address info
+    getpeername(sockFD, (struct sockaddr *) &remoteAddress, &addrSize);
 
     if (len == -1) {
         if (protocol == UDP) {
@@ -592,14 +594,11 @@ void sigIntHandler(int sig) {
 
     printf("\nCntrl-C pressed. Terminating connection to VPN server\n");
 
-    // Write the packet to the TUN device.
-    size = write(tunFD, buff, (size_t) len);
-
-    sendto(sockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
-           sizeof(peerAddr));
+    // Send the termination message over the tunnel
+    size = SSL_write(clientSession.ssl, buff, len);
 
     if (size == 0) {
-        perror("sendto");
+        perror("SSL_write");
     }
 
     sleep(1);
@@ -622,7 +621,6 @@ int main(int argc, char *argv[]) {
     struct sigaction sa;
     int protocol;
     int sslError;
-    tlsSession clientSession;
 
     bzero(&clientSession, sizeof(tlsSession));
 

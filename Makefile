@@ -15,4 +15,4 @@ vpnserver: vpnserver.o $(COMMON_OBJ) $(SERVER_OBJ)
 vpnmanager: vpnmanager.o $(COMMON_OBJ)
 
 clean:
-	rm vpnserver vpnclient *.o
+	rm vpnserver vpnclient vpnmanager *.o
