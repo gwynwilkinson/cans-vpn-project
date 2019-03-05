@@ -16,6 +16,10 @@ The VPN Management Client and Server programs interchange data using a JSON form
 
     sudo apt install libjson-c-dev
     
+To compile the code on a Raspberry Pi, we also need to install the openssl development libraries
+
+    sudo apt-get install libssl-dev
+    
 --------------------------
 To compile the program: 
 --------------------------

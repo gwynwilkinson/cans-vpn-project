@@ -7,6 +7,7 @@
 #include "list.h"
 #include "vpnserver.h"
 #include "sock.h"
+#include "tls.h"
 
 /*****************************************************************************************
  *
@@ -16,7 +17,7 @@
  *                      return a pointer to it.
  *
  *****************************************************************************************/
-struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD, int pid) {
+struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipFD, int connectionFD, int pid, tlsSession *pTLSSession) {
 
     // Allocate the memory for the new list entry node.
     struct listEntry *pNewEntry  = (struct listEntry*)malloc(sizeof(struct listEntry));
@@ -36,6 +37,7 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
     pNewEntry->connectionFD = connectionFD;
     pNewEntry->pipeFD = pipFD;
     pNewEntry->pid = pid;
+    pNewEntry->pTLSSession = pTLSSession;
 
     // Initialise the previous and next pointers
     pNewEntry->prev = NULL;
@@ -52,13 +54,13 @@ struct listEntry* createListEntryStr(char *pTunIP, int protocol, struct sockaddr
  *                      the list..
  *
  *****************************************************************************************/
-void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, int pid) {
+void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, int pid, tlsSession *pTLSSession) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Create the new list entry node
-    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, pid);
+    struct listEntry* pNewEntry = createListEntryStr(pTunIP, protocol, pPeerAddr, pipeFD, connectionFD, pid, pTLSSession);
 
     // Check to see if the head is empty. If so, insert there
     if(pHead == NULL ) {
@@ -218,14 +220,14 @@ void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr) {
  *                      address in string format. EG ("10.4.0.1")
  *
  *****************************************************************************************/
-struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD) {
+struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeFD, int *pConnectionFD, tlsSession **ppTLSSession) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Check for empty list
     if(pHead == NULL) {
-        printf("findIPAddress() - Head == NULL\n");
+        printf("findByTUNIPAddress() - Head == NULL\n");
         return NULL;
     }
 
@@ -249,6 +251,8 @@ struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeF
     // Set the PIPE FD
     *pPipeFD = pCurrent->pipeFD;
 
+    *ppTLSSession = pCurrent->pTLSSession;
+
     return(pCurrent->pPeerAddress);
 }
 
@@ -260,25 +264,27 @@ struct sockaddr_in* findByTUNIPAddress(char *pTunIP, int *pProtocol, int *pPipeF
  *                      address passed in a sockaddr_in structure.
  *
  *****************************************************************************************/
-char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr) {
+char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr, tlsSession **ppClientSession) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Check for empty list
     if(pHead == NULL) {
-        return false;
+        return NULL;
     }
 
     while(sockCmpAddr(pPeerAddr, pCurrent->pPeerAddress) != 0) {
         // Check to see if this was the last node
         if (pCurrent->next == NULL) {
-            return false;
+            return NULL;
         } else {
             // Move to next node
             pCurrent = pCurrent->next;
         }
     }
+
+    *ppClientSession = pCurrent->pTLSSession;
 
     return(pCurrent->tunIP);
 }
@@ -288,7 +294,9 @@ char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr) {
  * Function:            getPidByIndex()
  *
  * Description:         Obtain the child PID based on index position in the linked list.
- *                      (Used by the terminate connection index by management client)
+ *                      (Used by the terminate connection index by management client).
+ *                      Also returns the TUN IP, peer address structure and tunnel
+ *                      connection FD.
  *
  *****************************************************************************************/
 struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSockFD) {
@@ -317,44 +325,38 @@ struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSo
 
 /*****************************************************************************************
  *
- * Function:            updatePeerAddress()
+ * Function:            findUDPSession()
  *
- * Description:         Finds an existing entry in the linked list
- *                      and updates it with a new Peer Address
- *                      sockaddr_in structure.
- *
- *                      Returns 'true' if an entry was updated.
- *                      Returns 'false' if the entry was not found.
+ * Description:         Only one UDP client is supported at this time. Find the session associated
+ *                      to it and return the DTLS information and Peer Address structures.
  *
  *****************************************************************************************/
-bool updatePeerAddress(struct sockaddr_in *pNewPeerAddress, char pTunIP[]) {
+tlsSession *findUDPSession(struct sockaddr_in **ppPeerAddr) {
 
     // Start looking for an entry from the head of the list
     struct listEntry* pCurrent = pHead;
 
     // Check for empty list
     if(pHead == NULL) {
-        return false;
+        printf("findUDPSession() - Head == NULL\n");
+        return NULL;
     }
 
-    while(sockCmpAddr(pNewPeerAddress, pCurrent->pPeerAddress) != 0) {
+    // Compare the TUN IPs
+    while(pCurrent->protocol != UDP) {
         // Check to see if this was the last node
         if (pCurrent->next == NULL) {
-            return false;
+            return NULL;
         } else {
             // Move to next node
             pCurrent = pCurrent->next;
         }
     }
 
-    // Free the memory for the old structure
-    free(pCurrent->pPeerAddress);
-
-    pCurrent->pPeerAddress = pNewPeerAddress;
-    strcpy(pTunIP,pCurrent->tunIP);
-    return true;
+    // Found the list entry for this IP. Return the TLS information
+    *ppPeerAddr = pCurrent->pPeerAddress;
+    return(pCurrent->pTLSSession);
 }
-
 /*****************************************************************************************
  *
  * Function:            getDateTime()
