@@ -161,6 +161,7 @@ int connectToTCPServer(tlsSession *pClientSession) {
     }
 
     printf("Connected to server\n");
+    printf("\n--------------------------------------------------------------------------------\n");
 
     return mgmtSockFD;
 
@@ -183,17 +184,16 @@ int displayMainMenu() {
     printf(" ========================\n\n");
     printf("   1 - Display current connections\n");
     printf("   2 - Terminate a connection\n");
-    printf("   3 - ?????\n\n");
     printf(" 999 - Exit Program\n\n");
-    printf(" Please enter an option between 1-3, or 999 to exit:- ");
+    printf(" Please enter an option. 1, 2 or 999 to exit:- ");
 
     status = scanf("%d", &menuOption);
 
     // Handle any input error
-    while ((status != 1) || ((menuOption < 1) || ((menuOption > 3) &&
+    while ((status != 1) || ((menuOption < 1) || ((menuOption > 2) &&
                                                   ((menuOption != 999) && (menuOption != 50))))) {
         while ((temp = getchar()) != EOF && temp != '\n');
-        printf("Invalid Input. Please enter an option between 1-3, 999 to exit:- ");
+        printf("Invalid Input. Please enter an option. 1, 2 or 999 to exit:- ");
         status = scanf("%d", &menuOption);
     }
 
@@ -260,9 +260,6 @@ int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
     if(printVerboseDebug) {
         printf("\nCurrent Connection response: %s\n\n", buff);
     }
-
-
-    printf("RCV %s\n",buff);
 
     // Parse the JSON buffer
     jParsedJson = json_tokener_parse(buff);
@@ -341,7 +338,7 @@ void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
     }
 
     // Ask for input for which index we should terminate.
-    printf("Please enter the connection index to terminate (Enter 999 to quit):- ");
+    printf("Please enter the connection index to terminate (Enter 999 to return):- ");
 
     status = scanf("%d", &index);
 
@@ -349,7 +346,7 @@ void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
     while ((status != 1) || ((index < 0) || ((index > numConnections - 1) &&
                                                   ((index != 999))))) {
         while ((temp = getchar()) != EOF && temp != '\n');
-        printf("Invalid Input. Please enter a valid index or 999 to exit:- ");
+        printf("Invalid Input. Please enter a valid index or 999 to return:- ");
         status = scanf("%d", &index);
     }
 

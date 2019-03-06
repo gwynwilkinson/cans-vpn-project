@@ -43,6 +43,7 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile){
     // Use wireshark to see what's in the default handshake, it might be fine.
     // SSL_CTX_set_cipher_list( ? );
 
+    // TODO - WE NEED TO VERIFY THE SERVER CERT EXPIRY HERE??
     SSL_CTX_set_verify(ctx, verify, NULL);
 
     int error = 0;
@@ -107,7 +108,8 @@ int tls_init(tlsSession* session, bool isServer, int protocol, int verify, char 
     // Use wireshark to see what's in the default handshake, it might be fine.
     // SSL_CTX_set_cipher_list( ? );
 
-    SSL_CTX_set_verify(session->ctx, verify, NULL);
+    // TODO - !!!!MUST ADD HOST NAME CHECKING HERE!!!! (SEED Book 19.5.1 & 19.5.3)
+    SSL_CTX_set_verify(session->ctx, verify, clientVerifyCallBack);
 
     int error = 0;
 
@@ -157,7 +159,67 @@ int tls_init(tlsSession* session, bool isServer, int protocol, int verify, char 
 return 0;
 }
 
-// TODO - Reference this propertly. Cookie code taken from - https://github.com/nplab/DTLS-Examples/blob/master/src/dtls_udp_chargen.c
+/*****************************************************************************************
+ *
+ * Function:            clientVerifyCallBack()
+ *
+ * Description:         On client connection, this callback is called to
+ *                      verify the server certificate.
+ *
+ *****************************************************************************************/
+int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
+
+    ASN1_TIME *certTime;
+    char *pString;
+
+
+    X509* cert = X509_STORE_CTX_get_current_cert(x509_ctx);
+    int err = X509_STORE_CTX_get_error(x509_ctx);
+
+    if(preverify_ok == 1) {
+        printf("Server Certificate Verification passed.\n");
+
+        ASN1_TIME *tm;
+        BIO *b;
+        tm = X509_getm_notAfter(cert);
+
+        b = BIO_new_fp(stdout, BIO_NOCLOSE);
+
+        printf("Server Certificate Expiry date:- ");
+        ASN1_TIME_print(b, tm);
+        printf("\n\n");
+
+        int pDay=0, pSec=0;
+
+        ASN1_TIME_diff(&pDay,  &pSec, NULL, tm);
+
+        if(pDay <= 30) {
+            printf("\n!!!! SERVER CERTIFICATE EXPIRES IN %d DAYS !!!!\n", pDay);
+        }
+
+        ASN1_STRING_free(tm);
+        BIO_free(b);
+    } else {
+        // Dont report the self signed certificate error
+        if(err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT) {
+            return 1;
+        }
+
+        printf("Verification failed: %s \n",
+            X509_verify_cert_error_string(err));
+    }
+}
+
+
+/*****************************************************************************************
+ *
+ * Function:            generate_cookie()
+ *
+ * Description:         Used by the DTLS handshake mechanism to help with prevention of
+ *                      DoS by adding a cookie to the handshake.
+ *
+ *****************************************************************************************/
+// TODO - Reference this properly. Cookie code taken from - https://github.com/nplab/DTLS-Examples/blob/master/src/dtls_udp_chargen.c
 int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len)
 {
     unsigned char *buffer, result[EVP_MAX_MD_SIZE];
@@ -237,6 +299,15 @@ int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len)
     return 1;
 }
 
+/*****************************************************************************************
+ *
+ * Function:            verify_cookie()
+ *
+ * Description:         Used by the DTLS handshake mechanism to help with prevention of
+ *                      DoS by verifying the client returned the cookie we sent them in
+ *                      the handshake.
+ *
+ *****************************************************************************************/
 int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int cookie_len)
 {
     unsigned char *buffer, result[EVP_MAX_MD_SIZE];
