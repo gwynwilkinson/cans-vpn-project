@@ -299,7 +299,7 @@ char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr, tlsSession **ppClientSe
  *                      connection FD.
  *
  *****************************************************************************************/
-struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSockFD) {
+struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSockFD, tlsSession **ppClientSession) {
 
     int i = 0;
 
@@ -313,11 +313,13 @@ struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSo
 
     if(pCurrent == NULL) {
         // Index appears to be invalid. Return.
+        printf("getPidByIndex() Errror! - Could not find an entry for list index%d\n", index);
         return (0);
     } else {
         *pPid = pCurrent->pid;
         *pSockFD = pCurrent->connectionFD;
         *ppTunIP = pCurrent->tunIP;
+        *ppClientSession = pCurrent->pTLSSession;
         return(pCurrent->pPeerAddress);
     }
 

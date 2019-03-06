@@ -58,6 +58,12 @@ tlsSession clientSession;
 //Function prototypes
 void performHandshake(tlsSession *pClientSession, int sockFD);
 
+/**********************************************************************************************************************
+ *
+ * Initialisation functions
+ *
+ **********************************************************************************************************************/
+
 /*****************************************************************************************
  *
  * Function:            createTunDevice()
@@ -325,6 +331,11 @@ void performHandshake(tlsSession *pClientSession, int sockFD) {
     printf("SSL connection using %s\n", SSL_get_cipher(pClientSession->ssl));
 }
 
+/**********************************************************************************************************************
+ *
+ * TUN handler functions
+ *
+ **********************************************************************************************************************/
 
 /*****************************************************************************************
  *
@@ -382,6 +393,12 @@ void tunSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
     }
 }
 
+/**********************************************************************************************************************
+ *
+ * UDP and TCP tunnel function
+ *
+ **********************************************************************************************************************/
+
 /*****************************************************************************************
  *
  * Function:            socketSelected()
@@ -399,19 +416,11 @@ void socketSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
     socklen_t addrSize = sizeof(remoteAddress);
     struct iphdr *pIpHeader = (struct iphdr *) buff;
 
-    printf("ssl = %p\n", ssl);
-
     bzero(buff, BUFF_SIZE);
-    if (protocol == UDP) {
-        //len = recvfrom(sockFD, buff, BUFF_SIZE, 0, (struct sockaddr *) &remoteAddress, &addrSize);
-        len = SSL_read(ssl, buff, BUFF_SIZE);
-    } else {
-        //len = recv(sockFD, buff, BUFF_SIZE, 0);
-        len = SSL_read(ssl, buff, BUFF_SIZE);
-    }
 
-    // Get the peer address info
-    getpeername(sockFD, (struct sockaddr *) &remoteAddress, &addrSize);
+    // Reading the SSL info is thew same for TLS and DTLS
+    len = SSL_read(ssl, buff, BUFF_SIZE);
+
     if (len == -1) {
         if (protocol == UDP) {
             perror("UDP socket recv error");
@@ -425,6 +434,9 @@ void socketSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
         close(sockFD);
         exit(EXIT_SUCCESS);
     }
+
+    // Get the peer address info
+    getpeername(sockFD, (struct sockaddr *) &remoteAddress, &addrSize);
 
     // Ignore IPv6 packets
     if (pIpHeader->version == 6) {
@@ -455,6 +467,12 @@ void socketSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
     // Write the packet to the TUN device.
     write(tunFD, buff, (size_t) len);
 }
+
+/**********************************************************************************************************************
+ *
+ * Main program functions
+ *
+ **********************************************************************************************************************/
 
 /*****************************************************************************************
  *
@@ -657,7 +675,6 @@ int main(int argc, char *argv[]) {
         perror("Client tls_init");
         exit(EXIT_FAILURE);
     }
-
 
     // Client can be either UDP or TCP, start the correct connection
     if (protocol == UDP) {

@@ -17,8 +17,12 @@
 #define TCP 6
 #define UDP 17
 
-#define CERT_FILE "../certs/manager-cert.pem"
-#define KEY_FILE  "../certs/manager-key.pem"
+// TODO - Fix the cert path
+//#define CERT_FILE "../certs/manager-cert.pem"
+//#define KEY_FILE  "../certs/manager-key.pem"
+
+#define CERT_FILE "./certs/client-cert.pem"
+#define KEY_FILE  "./certs/client-key.pem"
 
 bool printVerboseDebug=false;
 
@@ -33,28 +37,16 @@ int main(int argc, char *argv[]) {
 
     int menuOption = 0;
     int mgmtSockFD;
-
-    // Connect to the Server.
-    mgmtSockFD = connectToTCPServer();
-
     tlsSession client_session;
 
+    // Initialise the SSL context structures
     if(tls_init(&client_session, false, TCP, SSL_VERIFY_NONE, SERVER_IP, CERT_FILE, KEY_FILE) == -1){
         perror("Client tls_init");
         exit(EXIT_FAILURE);
     }
-    /*Bind the socket to the SSL structure*/
-    SSL_set_fd(client_session.ssl,mgmtSockFD);
 
-    /*Connect to the server, SSL layer.*/
-    if(SSL_connect(client_session.ssl) != 1){
-        perror("Client SSL_connect");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("SSL connection is successful\n");
-    printf ("SSL connection using %s\n", SSL_get_cipher(client_session.ssl));
-
+    // Connect to the Server.
+    mgmtSockFD = connectToTCPServer(&client_session);
 
     // Main Menu loop
     while (menuOption != EXIT_PROGRAM) {
@@ -64,10 +56,10 @@ int main(int argc, char *argv[]) {
 
         switch (menuOption) {
             case 1:
-                displayCurrentConnections(mgmtSockFD);
+                displayCurrentConnections(mgmtSockFD, &client_session);
                 break;
             case 2:
-                terminateConnection(mgmtSockFD);
+                terminateConnection(mgmtSockFD, &client_session);
                 break;
             case 3:
                 break;
@@ -91,7 +83,7 @@ int main(int argc, char *argv[]) {
  *                      remote VPN server on the management port
  *
  *****************************************************************************************/
-int connectToTCPServer() {
+int connectToTCPServer(tlsSession *pClientSession) {
 
     struct sockaddr_in peerAddr;
     struct sockaddr_in localAddr;
@@ -100,6 +92,7 @@ int connectToTCPServer() {
     socklen_t saLen;
     ssize_t len;
     char buff[17];
+    int sslError;
 
     // Create the peer socket address (Internet) structure.
     memset(&peerAddr, 0, sizeof(peerAddr));
@@ -136,15 +129,34 @@ int connectToTCPServer() {
                (int) ntohs(localAddr.sin_port));
     }
 
+    // Perform the TLS handshake
+    printf("Perform Handshake\n");
+
+    /*Bind the socket to the SSL structure*/
+    sslError = SSL_set_fd(pClientSession->ssl, mgmtSockFD);
+
+    if (sslError != 1) {
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
+        exit(EXIT_FAILURE);
+    }
+
+    /* Connect to the server, SSL layer.*/
+    if (SSL_connect(pClientSession->ssl) != 1) {
+        perror("Client SSL_connect");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("SSL connection is successful\n");
+    printf("SSL connection using %s\n", SSL_get_cipher(pClientSession->ssl));
+
     // Send the connection request to the server
-    len = send(mgmtSockFD, hello, strlen(hello), 0);
+    len = SSL_write(pClientSession->ssl, hello, strlen(hello));
 
     if (len == -1) {
         // Connection error
-        perror("TCP Connection Error");
-        exit(EXIT_FAILURE);
-    } else if (len == 0) {
-        printf("Connection Closed\n");
+        perror("UDP Connection Error");
         exit(EXIT_FAILURE);
     }
 
@@ -197,7 +209,7 @@ int displayMainMenu() {
  * Description:         Print the main menu and handle input
  *
  *****************************************************************************************/
-int displayCurrentConnections(int mgmtSockFD) {
+int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
 
     char buff[BUFF_SIZE];
     json_object *jParsedJson;
@@ -215,7 +227,7 @@ int displayCurrentConnections(int mgmtSockFD) {
     strcpy(buff, json_object_to_json_string(jObject));
 
     // Send the connection request to the server
-    len = send(mgmtSockFD, buff, strlen(buff), 0);
+    len = SSL_write(pClientSession->ssl, buff, strlen(buff));
 
     if (len == -1) {
         // Connection error
@@ -227,7 +239,7 @@ int displayCurrentConnections(int mgmtSockFD) {
     }
 
     // Wait for the server to respond with the JSON data
-    len = recv(mgmtSockFD, buff, BUFF_SIZE, 0);
+    len = SSL_read(pClientSession->ssl, buff, BUFF_SIZE - 1);
 
     if (len == -1) {
         // Connection error
@@ -248,6 +260,9 @@ int displayCurrentConnections(int mgmtSockFD) {
     if(printVerboseDebug) {
         printf("\nCurrent Connection response: %s\n\n", buff);
     }
+
+
+    printf("RCV %s\n",buff);
 
     // Parse the JSON buffer
     jParsedJson = json_tokener_parse(buff);
@@ -305,7 +320,7 @@ int displayCurrentConnections(int mgmtSockFD) {
  * Description:         Print the main menu and handle input
  *
  *****************************************************************************************/
-void terminateConnection(int mgmtSockFD) {
+void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
 
     char buff[BUFF_SIZE];
     json_object *jParsedJson;
@@ -317,7 +332,7 @@ void terminateConnection(int mgmtSockFD) {
     // TODO - Add authentication of user before performing this action
 
     // Display the current connections to the user
-    numConnections = displayCurrentConnections(mgmtSockFD);
+    numConnections = displayCurrentConnections(mgmtSockFD, pClientSession);
 
     // Check there is something to terminate
     if(numConnections == 0) {
@@ -345,7 +360,6 @@ void terminateConnection(int mgmtSockFD) {
         return;
     }
 
-    // TODO - Doing this by index is bad as this index could naturally terminate on the server by the time its processed. Do we care? document?
     // Format up the request type of "Terminate Connection" in JSON format with the
     json_object *jObject = json_object_new_object();
     json_object *jStringRequestType = json_object_new_string("Terminate Connection");
@@ -358,7 +372,7 @@ void terminateConnection(int mgmtSockFD) {
     strcpy(buff, json_object_to_json_string(jObject));
 
     // Send the connection request to the server
-    len = send(mgmtSockFD, buff, strlen(buff), 0);
+    len = SSL_write(pClientSession->ssl, buff, strlen(buff));
 
     if (len == -1) {
         // Connection error
@@ -370,7 +384,7 @@ void terminateConnection(int mgmtSockFD) {
     }
 
     // Wait for the server to respond with the JSON data
-    len = recv(mgmtSockFD, buff, BUFF_SIZE, 0);
+    len = SSL_read(pClientSession->ssl, buff, BUFF_SIZE - 1);
 
     if (len == -1) {
         // Connection error

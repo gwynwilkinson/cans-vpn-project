@@ -35,6 +35,9 @@ bool printVerboseDebug = false;
 bool printIPHeaders = false;
 bool udpClientConnected = false;
 
+// Global variables
+
+// Definitions for command line options
 static struct option long_options[] =
         {
                 {"udp-server-port", required_argument, NULL, 'u'},
@@ -45,6 +48,7 @@ static struct option long_options[] =
                 {NULL, 0,                              NULL, 0}
         };
 
+// Store for server port numbers
 ushort udpPortNumber = 0;
 ushort tcpPortNumber = 0;
 
@@ -54,22 +58,20 @@ struct listEntry *pHead = NULL;
 // Array storing assigned client IP addresses in the range 10.4.0.x
 bool clientIPAddress[MAX_CLIENTS] = {false};
 
+// Management client TLS structure and connection FD
 int mgmtConnectionFD = 0;
+tlsSession *pMgmtClientTLSSession;
 
 // A PIPE used by the child to send data back to the Parent server process
 // indicating that the child is terminating. This allows the parent server
-
+// to clean up the linked list after a child dies
 int childParentPipe[2];
 
-
-struct pass_info {
-    union {
-        struct sockaddr_storage ss;
-        struct sockaddr_in6 s6;
-        struct sockaddr_in s4;
-    } server_addr, client_addr;
-    SSL *ssl;
-};
+/**********************************************************************************************************************
+ *
+ * Initialisation functions
+ *
+ **********************************************************************************************************************/
 
 /*****************************************************************************************
  *
@@ -261,6 +263,12 @@ int initTCPServer(int portNumber) {
     return (tcpSockFD);
 }
 
+/**********************************************************************************************************************
+ *
+ * TUN handling functions
+ *
+ **********************************************************************************************************************/
+
 /*****************************************************************************************
  *
  * Function:            tunSelected()
@@ -349,137 +357,11 @@ void tunSelected(int tunFD) {
 }
 
 
-/*****************************************************************************************
+/**********************************************************************************************************************
  *
- * Function:            readChildPIPE()
+ * UDP tunnel functions
  *
- * Description:         The TUN (application) is trying to send
- *                      a packet to the tunnel. Receive the
- *                      data from the PIPE and send to the
- *                      TCP tunnel FD
- *
- *****************************************************************************************/
-void readChildPIPE(int pipeFD) {
-
-    char buff[BUFF_SIZE];
-    struct iphdr *pIpHeader = (struct iphdr *) buff;
-    struct sockaddr_in destAddr;
-    struct sockaddr_in *pPeerAddr = NULL;
-    ssize_t len, size;
-    tlsSession *pTLSSession;
-    int connectionFD;
-    int protocol;
-
-    // Read the data from the PIPE (TUN)
-    len = read(pipeFD, buff, BUFF_SIZE);
-
-    if (len == 0) {
-        perror("PIPE read error");
-        exit(EXIT_FAILURE);
-    }
-
-    // Perform the peer socket address lookup in the linked list
-    // based on the TUN destination address in the buffer.
-    destAddr.sin_addr.s_addr = pIpHeader->daddr;
-    destAddr.sin_family = AF_INET;
-
-    // Obtain the peerAddress structure for this destination and set
-    // the protocol variable so that we can determine which method to
-    // use.
-    pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, &pTLSSession);
-
-    if (pPeerAddr == NULL) {
-        printf("readChildPIPE() Unable to find TUN IP Address %s\n", inet_ntoa(destAddr.sin_addr));
-    }
-
-    // Send the buffer to the TCP socket
-    size = SSL_write(pTLSSession->ssl, buff, (int) len);
-
-    if (size == 0) {
-        // Error sending data
-        perror("Tunnel socket send");
-    }
-}
-
-
-/*****************************************************************************************
- *
- * Function:            readChildTCPSocket()
- *
- * Description:         Received a packet on the child TCP socket (tunnel)
- *                      Send to the TUN device (application)
- *
- *****************************************************************************************/
-void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAddr, int pipeFD,
-                        tlsSession *pTLSSession) {
-
-    char buff[BUFF_SIZE];
-    struct iphdr *pIpHeader = (struct iphdr *) buff;
-    ssize_t len;
-
-    len = SSL_read(pTLSSession->ssl, buff, BUFF_SIZE);
-    //len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
-
-    if (len == -1) {
-        perror("Child server TCP recv");
-        close(connectionFD);
-        close(pipeFD);
-        exit(EXIT_FAILURE);
-
-    } else if (len == 0) {
-        // Connection has been closed. Kill the connection and
-        // child process
-        // File Logging - Report TCP Client termination
-
-        // Find the unique remote TUN IP address in the linked list structure
-        // using the Peer IP and Port as a lookup.
-        strcpy(buff, findByPeerIPAddress(pPeerAddr, &pTLSSession));
-
-        write(childParentPipe[1], buff, sizeof(buff));
-
-        LOG(BOTH, "TCP Client %s:%d has closed the connection.\n",
-            inet_ntoa(pPeerAddr->sin_addr),
-            ntohs(pPeerAddr->sin_port));
-
-        if (printVerboseDebug) {
-            printf("Killing Child PID %d - Closing connection FD %d \n", (int) getpid(), connectionFD);
-            printf("CHILD - Sending death of remote TUN IP %s to parent\n", buff);
-        }
-
-        close(connectionFD);
-        close(pipeFD);
-
-        exit(EXIT_SUCCESS);
-    }
-
-    // Ignore IPv6 packets
-    if (pIpHeader->version == 6) {
-        return;
-    }
-
-    if (printVerboseDebug) {
-        printf("TCP Tunnel->TUN - Source IP %s:%d - Length %d\n",
-               inet_ntoa(pPeerAddr->sin_addr),
-               (int) ntohs(pPeerAddr->sin_port),
-               (int) len);
-    }
-
-    // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
-    if (printIPHeaders) {
-        if ((unsigned int) pIpHeader->protocol == UDP) {
-            printUDPHeader(buff, (int) len);
-        } else if ((unsigned int) pIpHeader->protocol == TCP) {
-            printTCPHeader(buff, (int) len);
-        } else if ((unsigned int) pIpHeader->protocol == ICMP) {
-            printICMPHeader(buff, (int) len);
-        } else {
-            printIPHeader(buff, (int) len);
-        }
-    }
-
-    // Write the packet to the TUN device.
-    write(tunFD, buff, (size_t) len);
-}
+ **********************************************************************************************************************/
 
 /*****************************************************************************************
  *
@@ -663,6 +545,143 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
     }
 }
 
+/**********************************************************************************************************************
+ *
+ * TCP tunnel functions
+ *
+ **********************************************************************************************************************/
+
+/*****************************************************************************************
+ *
+ * Function:            readChildPIPE()
+ *
+ * Description:         The TUN (application) is trying to send
+ *                      a packet to the tunnel. Receive the
+ *                      data from the PIPE and send to the
+ *                      TCP tunnel FD
+ *
+ *****************************************************************************************/
+void readChildPIPE(int pipeFD) {
+
+    char buff[BUFF_SIZE];
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
+    struct sockaddr_in destAddr;
+    struct sockaddr_in *pPeerAddr = NULL;
+    ssize_t len, size;
+    tlsSession *pTLSSession;
+    int connectionFD;
+    int protocol;
+
+    // Read the data from the PIPE (TUN)
+    len = read(pipeFD, buff, BUFF_SIZE);
+
+    if (len == 0) {
+        perror("PIPE read error");
+        exit(EXIT_FAILURE);
+    }
+
+    // Perform the peer socket address lookup in the linked list
+    // based on the TUN destination address in the buffer.
+    destAddr.sin_addr.s_addr = pIpHeader->daddr;
+    destAddr.sin_family = AF_INET;
+
+    // Obtain the peerAddress structure for this destination and set
+    // the protocol variable so that we can determine which method to
+    // use.
+    pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, &pTLSSession);
+
+    if (pPeerAddr == NULL) {
+        printf("readChildPIPE() Unable to find TUN IP Address %s\n", inet_ntoa(destAddr.sin_addr));
+    }
+
+    // Send the buffer to the TCP socket
+    size = SSL_write(pTLSSession->ssl, buff, (int) len);
+
+    if (size == 0) {
+        // Error sending data
+        perror("Tunnel socket send");
+    }
+}
+
+
+/*****************************************************************************************
+ *
+ * Function:            readChildTCPSocket()
+ *
+ * Description:         Received a packet on the child TCP socket (tunnel)
+ *                      Send to the TUN device (application)
+ *
+ *****************************************************************************************/
+void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAddr, int pipeFD,
+                        tlsSession *pTLSSession) {
+
+    char buff[BUFF_SIZE];
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
+    ssize_t len;
+
+    len = SSL_read(pTLSSession->ssl, buff, BUFF_SIZE);
+    //len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
+
+    if (len == -1) {
+        perror("Child server TCP recv");
+        close(connectionFD);
+        close(pipeFD);
+        exit(EXIT_FAILURE);
+
+    } else if (len == 0) {
+        // Connection has been closed. Kill the connection and
+        // child process
+        // File Logging - Report TCP Client termination
+
+        // Find the unique remote TUN IP address in the linked list structure
+        // using the Peer IP and Port as a lookup.
+        strcpy(buff, findByPeerIPAddress(pPeerAddr, &pTLSSession));
+
+        write(childParentPipe[1], buff, sizeof(buff));
+
+        LOG(BOTH, "TCP Client %s:%d has closed the connection.\n",
+            inet_ntoa(pPeerAddr->sin_addr),
+            ntohs(pPeerAddr->sin_port));
+
+        if (printVerboseDebug) {
+            printf("Killing Child PID %d - Closing connection FD %d \n", (int) getpid(), connectionFD);
+            printf("CHILD - Sending death of remote TUN IP %s to parent\n", buff);
+        }
+
+        close(connectionFD);
+        close(pipeFD);
+
+        exit(EXIT_SUCCESS);
+    }
+
+    // Ignore IPv6 packets
+    if (pIpHeader->version == 6) {
+        return;
+    }
+
+    if (printVerboseDebug) {
+        printf("TCP Tunnel->TUN - Source IP %s:%d - Length %d\n",
+               inet_ntoa(pPeerAddr->sin_addr),
+               (int) ntohs(pPeerAddr->sin_port),
+               (int) len);
+    }
+
+    // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
+    if (printIPHeaders) {
+        if ((unsigned int) pIpHeader->protocol == UDP) {
+            printUDPHeader(buff, (int) len);
+        } else if ((unsigned int) pIpHeader->protocol == TCP) {
+            printTCPHeader(buff, (int) len);
+        } else if ((unsigned int) pIpHeader->protocol == ICMP) {
+            printICMPHeader(buff, (int) len);
+        } else {
+            printIPHeader(buff, (int) len);
+        }
+    }
+
+    // Write the packet to the TUN device.
+    write(tunFD, buff, (size_t) len);
+}
 
 /*****************************************************************************************
  *
@@ -728,6 +747,8 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     int pid;
     int err;
 
+    bzero(buff, BUFF_SIZE);
+
     // Allocate the memory for the peerAddr structure
     pPeerAddr = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
 
@@ -750,40 +771,37 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     }
 
     // Allocate the memory for a new TLS Session structure
-    pTLSSession = (tlsSession *) malloc(sizeof(tlsSession));
-
-    // Verify the memory was allocated
-    if (pTLSSession == NULL) {
+    if((pTLSSession = (tlsSession *) malloc(sizeof(tlsSession))) == NULL) {
+        // Memory allocation error
         perror("malloc");
+        free(pPeerAddr);
         exit(EXIT_FAILURE);
     } else {
         bzero(pTLSSession, sizeof(tlsSession));
     }
-    /*Create new ssl object*/
-    pTLSSession->ssl = SSL_new(tls_ctx);
 
-    if (!pTLSSession->ssl) {
+    // Create a new ssl object
+    if((pTLSSession->ssl = SSL_new(tls_ctx)) == NULL) {
         perror("Error creating TCP SSL structure.");
+        free(pPeerAddr);
+        free(pTLSSession);
         return;
     }
 
-    /* Bind the ssl object with the socket*/
+    // Bind the ssl object with the socket
     SSL_set_fd(pTLSSession->ssl, connectionFD);
 
-    /*Do the SSL Handshake*/
-    err = SSL_accept(pTLSSession->ssl);
-
-    if (err == -1) {
+    // Perform the SSL Handshake
+    if(SSL_accept(pTLSSession->ssl) == -1) {
+        // Handshake error
         char msg[1024];
         ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
         printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
+        free(pPeerAddr);
+        free(pTLSSession);
         return;
     }
 
-    printf("SSL connection using %s\n", SSL_get_cipher(pTLSSession->ssl));
-
-    bzero(buff, BUFF_SIZE);
-//    len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
     len = SSL_read(pTLSSession->ssl, buff, BUFF_SIZE - 1);
 
     if (len == -1) {
@@ -836,11 +854,6 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
             LOG(LOGFILE, "Created PIPE with FDs [%d] and [%d]\n", pipeFD[0], pipeFD[1]);
         }
 
-        // Add the peer address structure to the linked list and store the pipeFD
-        // so that the parent process can determine which child needs to handle
-        // the TUN->tunnel communication. Also store the socket connectionFD
-        // so that the child process can send the message to the correct connection
-        insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, pid, pTLSSession);
 
         // Fork a new server instance to deal with this TCP connection
         if ((pid = fork()) == 0) {
@@ -850,8 +863,19 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
             vpnTCPChildSubProcess(udpSockFD, tcpSockFD, mgmtSockFD, pPeerAddr, pipeFD, connectionFD, tunFD,
                                   pTLSSession);
 
+            // The Child process needs to add the entry to the linked list so that it
+            // can perform lookups and find the TLS Session associated to the TUNIP, etc.
+            // This code cannot be performed before the fork as the parent process requires
+            // the PID of the Child process to be stored (so that the VPN manager is able
+            // to terminate the session.
+            insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, pid, pTLSSession);
+
         } else {
             // This is the Parent process
+            // Add the peer address structure to the linked list and store the pipeFD
+            // so that the parent process can determine which child needs to handle
+            // the TUN->tunnel communication.
+            insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, pid, pTLSSession);
 
             // Parent does not need the connection FD
             close(connectionFD);
@@ -873,6 +897,11 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     }
 }
 
+/**********************************************************************************************************************
+ *
+ * Management Client functions
+ *
+ **********************************************************************************************************************/
 
 /*****************************************************************************************
  *
@@ -892,7 +921,7 @@ void mgmtClientSocket(int connectionFD) {
 
     bzero(buff, BUFF_SIZE);
 
-    len = read(connectionFD, buff, BUFF_SIZE);
+    len = SSL_read(pMgmtClientTLSSession->ssl, buff, BUFF_SIZE - 1);
 
     if ((len == 0) || (len == -1)) {
         // Connection has been closed. Close the port and kill the process
@@ -926,7 +955,6 @@ void mgmtClientSocket(int connectionFD) {
     } else {
         LOG(LOGFILE, "Mgmt Client requested:- \"%s\"\n", json_object_get_string(jStringRequestType));
     }
-
 
     // Check what the Management Client requested,
     if (strcmp(json_object_get_string(jStringRequestType), "Current Connections") == 0) {
@@ -976,7 +1004,7 @@ void mgmtClientSocket(int connectionFD) {
         strcpy(buff, json_object_to_json_string(jObject));
 
         // Send the data back to the manager
-        len = send(connectionFD, buff, sizeof(buff), 0);
+        len = SSL_write(pMgmtClientTLSSession->ssl, buff, strlen(buff));
 
         if ((len == 0) || (len == -1)) {
             // Error sending data
@@ -986,10 +1014,7 @@ void mgmtClientSocket(int connectionFD) {
 
     } else if (strcmp(json_object_get_string(jStringRequestType), "Terminate Connection") == 0) {
 
-        // TODO - Log termination of a client
-
         LOG(LOGFILE, "Received Terminate Connection Request: %s\n", jStringRequestType);
-
 
         // Request to terminate connection. Determine which index
         int index;
@@ -997,6 +1022,7 @@ void mgmtClientSocket(int connectionFD) {
         int sockFD;
         char *pTunIP = NULL;
         struct sockaddr_in *pPeerAddr = NULL;
+        tlsSession *pTLSSession;
 
         json_object *jObject;
         json_object *jIntIndex;
@@ -1006,7 +1032,7 @@ void mgmtClientSocket(int connectionFD) {
 
         index = json_object_get_int(jIntIndex);
 
-        pPeerAddr = getPidByIndex(index, &pid, &pTunIP, &sockFD);
+        pPeerAddr = getPidByIndex(index, &pid, &pTunIP, &sockFD, &pTLSSession);
 
         LOG(BOTH, "VPN Manager requested termination of connection for TUN IP %s. Peer address %s:%d\n",
             pTunIP,
@@ -1016,42 +1042,44 @@ void mgmtClientSocket(int connectionFD) {
         // Format the response message
         jObject = json_object_new_object();
 
+        // Verify the PID we are about to kill
         if (pid != 0) {
+            // A non zero PID means that we are trying to kill a TCP client child process.
+            // Send a SIGTERM message to it
             if (kill(pid, SIGTERM) == 0) {
                 // Process killed successfully
                 jStringResponseCode = json_object_new_string("Success");
-                LOG(LOGFILE, "Process killed successfully\n");
+                LOG(BOTH, "Process killed successfully\n");
 
                 // Delete the entry from the linked list
                 deleteEntryByTunIP(pTunIP);
-                LOG(LOGFILE, "Entry for tunIP: %\n", pTunIP);
-
             } else {
                 // Error in process termination
                 jStringResponseCode = json_object_new_string("Failure");
-                LOG(LOGFILE, "Error terminating process\n");
-
+                LOG(BOTH, "Error terminating process PID %d - TUN IP %s\n", pid, pTunIP);
             }
-
         } else {
-
             // Terminating a UDP connection. UDP is serviced by the parent process and the
             // UDP client will not 'notice' that the server is not responding due to the connectionless
             // nature of the transport.
-            // Send back a message to the client indicating that we are terminating the connection, and then
-            // remove the list entry for this connection.
+            // Shutdown the DTLS SSL connection as the far end will see this as a connection close.
+            int ret = SSL_shutdown(pTLSSession->ssl);
 
-            char terminateBuffer[21] = "Terminate Connection";
+            if(ret == 0) {
+                // Shutdown not yet finished. Must call a 2nd time
+                SSL_shutdown(pTLSSession->ssl);
 
-            // Send the message to the correct peer.
-            len = sendto(sockFD, terminateBuffer, sizeof(terminateBuffer), 0, (struct sockaddr *) pPeerAddr,
-                         sizeof(struct sockaddr));
+                // Process killed successfully
+                LOG(LOGFILE, "Process terminated successfully.\n");
+                jStringResponseCode = json_object_new_string("Success");
 
-            if ((len == 0) || (len == -1)) {
+                // Delete the entry from the linked list
+                deleteEntryByTunIP(pTunIP);
+            } else if( ret < 0) {
                 perror("sendto");
 
                 // Error in process termination
-                LOG(LOGFILE, "Error in process termination.\n");
+                LOG(BOTH, "Error terminating UDP connection for - TUN IP %s\n", pTunIP);
                 jStringResponseCode = json_object_new_string("Failure");
 
             } else {
@@ -1060,7 +1088,6 @@ void mgmtClientSocket(int connectionFD) {
                 jStringResponseCode = json_object_new_string("Success");
 
                 // Delete the entry from the linked list
-                LOG(LOGFILE, "Entry %s deleted from list\n", pTunIP);
                 deleteEntryByTunIP(pTunIP);
             }
 
@@ -1073,17 +1100,16 @@ void mgmtClientSocket(int connectionFD) {
         strcpy(buff, json_object_to_json_string(jObject));
 
         // Send the connection request to the server
-        len = send(connectionFD, buff, strlen(buff), 0);
+        len = SSL_write(pMgmtClientTLSSession->ssl, buff, strlen(buff));
 
         if ((len == 0) || (len == -1)) {
             // Error sending data
-            LOG(LOGFILE, "Error sending data - TCP socket send\n");
-            perror("TCP socket send");
+            LOG(BOTH, "Error sending data - SSL send\n");
+            perror("SSL send");
         }
 
-
     } else {
-        LOG(BOTH, "UNKNOWN REQUEST %s\n", buff);
+        LOG(BOTH, "Management Client received an unknown request - %s\n", buff);
     }
 }
 
@@ -1096,13 +1122,16 @@ void mgmtClientSocket(int connectionFD) {
  *                      communication.
  *
  *****************************************************************************************/
-void mgmtClientListenerSelected(int mgmtSockFD) {
+void mgmtClientListenerSelected(int mgmtSockFD, SSL_CTX *tls_ctx) {
     ssize_t len;
     char buff[BUFF_SIZE];
     struct sockaddr_in *pPeerAddr;
     socklen_t addrSize = sizeof(struct sockaddr_in);
     int connectionFD;
     int pid;
+
+    // Clear the buffer
+    bzero(buff, BUFF_SIZE);
 
     // Allocate the memory for the peerAddr structure
     pPeerAddr = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
@@ -1127,19 +1156,51 @@ void mgmtClientListenerSelected(int mgmtSockFD) {
         LOG(LOGFILE, "Connection FD for new management client connection is %d\n", connectionFD);
     }
 
-    bzero(buff, BUFF_SIZE);
-    len = recv(connectionFD, buff, BUFF_SIZE - 1, 0);
+    // Allocate the memory for a new TLS Session structure
+    if ((pMgmtClientTLSSession = (tlsSession *) malloc(sizeof(tlsSession))) == NULL) {
+        // Memory allocation failure
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    } else {
+        // Clear the memory
+        bzero(pMgmtClientTLSSession, sizeof(tlsSession));
+    }
+
+    // Create a new SSL object
+    if((pMgmtClientTLSSession->ssl = SSL_new(tls_ctx)) ==  NULL){
+        perror("Error creating Mgmt Client SSL structure.");
+        free(pMgmtClientTLSSession);
+        pMgmtClientTLSSession = NULL;
+        return;
+    }
+
+    // Bind the ssl object with the socket
+    SSL_set_fd(pMgmtClientTLSSession->ssl, connectionFD);
+
+    // Perform the SSL Handshake
+    if((SSL_accept(pMgmtClientTLSSession->ssl)) == -1) {
+        // Handshake error
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
+        free(pMgmtClientTLSSession);
+        pMgmtClientTLSSession = NULL;
+        return;
+    }
+
+    len = SSL_read(pMgmtClientTLSSession->ssl, buff, BUFF_SIZE - 1);
 
     if (len == -1) {
-        LOG(LOGFILE, "TCP Rcv error.\n");
+        LOG(LOGFILE, "Mgmt Client Rcv error.\n");
         perror("TCP Rcv error");
         return;
     } else if (len == 0) {
-
         LOG(BOTH, "Management Client %s:%d has closed the connection\n",
             inet_ntoa(pPeerAddr->sin_addr),
             ntohs(pPeerAddr->sin_port));
 
+        free(pMgmtClientTLSSession);
+        pMgmtClientTLSSession = NULL;
         close(connectionFD);
         return;
     }
@@ -1150,7 +1211,6 @@ void mgmtClientListenerSelected(int mgmtSockFD) {
         LOG(BOTH, "New Management client connection from %s:%d. Initialisation Msg:- %s\n",
             inet_ntoa(pPeerAddr->sin_addr),
             ntohs(pPeerAddr->sin_port), buff);
-
 
     } else {
         // Error. We should only be receiving new connection requests on this socket FD.
@@ -1164,11 +1224,23 @@ void mgmtClientListenerSelected(int mgmtSockFD) {
                 ntohs(pPeerAddr->sin_port));
         }
 
+        // Error in connection request. Close the SSL connection and free the structures.
+        SSL_shutdown(pMgmtClientTLSSession->ssl);
+        free(pMgmtClientTLSSession);
+        pMgmtClientTLSSession = NULL;
+
         close(connectionFD);
+        return;
     }
 
     mgmtConnectionFD = connectionFD;
 }
+
+/**********************************************************************************************************************
+ *
+ * Main Process program handling functions
+ *
+ **********************************************************************************************************************/
 
 /*****************************************************************************************
  *
@@ -1404,7 +1476,7 @@ int main(int argc, char *argv[]) {
         if (FD_ISSET(udpSockFD, &readFDSet)) udpSocketSelected(tunFD, udpSockFD, tcpSockFD, mgmtSockFD, dtls_ctx);
         if (FD_ISSET(tcpSockFD, &readFDSet))
             tcpListenerSocketSelected(tunFD, tcpSockFD, udpSockFD, mgmtSockFD, tls_ctx);
-        if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientListenerSelected(mgmtSockFD);
+        if (FD_ISSET(mgmtSockFD, &readFDSet)) mgmtClientListenerSelected(mgmtSockFD, tls_ctx);
         if (FD_ISSET(childParentPipe[0], &readFDSet)) childParentPipeSelected();
 
         if (mgmtConnectionFD != 0) {
