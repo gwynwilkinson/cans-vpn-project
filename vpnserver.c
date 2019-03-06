@@ -858,17 +858,16 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
         // Fork a new server instance to deal with this TCP connection
         if ((pid = fork()) == 0) {
             // This is the Child process
-
-            // Handle the child process sub-function
-            vpnTCPChildSubProcess(udpSockFD, tcpSockFD, mgmtSockFD, pPeerAddr, pipeFD, connectionFD, tunFD,
-                                  pTLSSession);
-
             // The Child process needs to add the entry to the linked list so that it
             // can perform lookups and find the TLS Session associated to the TUNIP, etc.
             // This code cannot be performed before the fork as the parent process requires
             // the PID of the Child process to be stored (so that the VPN manager is able
             // to terminate the session.
             insertTail(buff, TCP, pPeerAddr, pipeFD[1], connectionFD, pid, pTLSSession);
+
+            // Handle the child process sub-function
+            vpnTCPChildSubProcess(udpSockFD, tcpSockFD, mgmtSockFD, pPeerAddr, pipeFD, connectionFD, tunFD,
+                                  pTLSSession);
 
         } else {
             // This is the Parent process
