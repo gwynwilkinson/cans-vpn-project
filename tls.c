@@ -10,6 +10,8 @@
 #include <stdbool.h>
 #include "tls.h"
 #include "vpnserver.h"
+#include "logging.h"
+
 
 #define COOKIE_SECRET_LENGTH 16
 unsigned char cookie_secret[COOKIE_SECRET_LENGTH];
@@ -30,7 +32,7 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile){
     }else if (protocol==UDP){
         method = (SSL_METHOD *)DTLS_server_method();
     }else{
-        printf("Error: Invalid protocol selected.\n");
+        LOG(BOTH,"Error: Invalid protocol selected.\n");
         return NULL;
         // TODO - bring error handling and logging in line with elsewhere
     }

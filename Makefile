@@ -3,7 +3,7 @@ CFLAGS=-g
 LDLIBS=-ljson-c -lssl -lcrypto
 DEPS = *h
 SERVER_OBJ = list.o sock.o logging.o
-COMMON_OBJ = debug.o tls.o
+COMMON_OBJ = debug.o tls.o logging.o
 
 %.o: %.c %(DEPS)
 	$CC -c -o $@ $ $(LDLIBS)< $(CFLAGS)
