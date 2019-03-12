@@ -91,7 +91,7 @@ int openlog(){
 
   if((vpn_logfp = fopen(VPN_LOG, "a")) == NULL){
     perror("Cannot open file: VPN_LOG");
-    return EXIT_FAILURE;
+    exit(EXIT_FAILURE);
   }
   else{
     LOG(LOGFILE,"Opened file: %s\n",VPN_LOG);

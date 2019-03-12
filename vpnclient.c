@@ -617,7 +617,7 @@ void sigIntHandler(int sig) {
     // Report that this signal can be ignored. We are handling it here.
     signal(sig, SIG_IGN);
 
-    printf("\nCntrl-C pressed. Terminating connection to VPN server\n");
+    printf("\nCtrl-C pressed. Terminating connection to VPN server\n");
 
     // Send the termination message over the tunnel
     size = SSL_write(clientSession.ssl, buff, len);

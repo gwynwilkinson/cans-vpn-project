@@ -379,6 +379,7 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
     struct iphdr *pIpHeader = (struct iphdr *) buff;
     socklen_t addrSize = sizeof(struct sockaddr_in);
     int err;
+    char *errstr;
     tlsSession *pTLSSession;
 
     bzero(buff, BUFF_SIZE);
@@ -429,12 +430,16 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
             perror("SSL_read");
             printf("%s\n", ERR_error_string(ERR_get_error(), buff));
         }
-
+        // TODO - examine error code 0 being thrown by SSL_accept when client times out
         // Complete the handshake
         ret = SSL_accept(pTLSSession->ssl);
-        if (ret < 0) {
+        if (ret <= 0) {
+            err = ERR_get_error();
+            if (err == 0){
+                return;
+            }
             perror("SSL_accept");
-            printf("%s\n", ERR_error_string(ERR_get_error(), buff));
+            printf("%s\n", ERR_error_string(err, buff));
             free(pTLSSession);
             free(pPeerAddr);
             return;
@@ -442,7 +447,7 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
 
         //  /* Tell openssl to process the packet now stored in the bio */
         err = SSL_read(pTLSSession->ssl, buff, BUFF_SIZE);
-        if (err < 0) {
+        if (err <= 0) {
             perror("SSL_read");
             printf("%s\n", ERR_error_string(ERR_get_error(), buff));
             free(pTLSSession);
@@ -1391,7 +1396,11 @@ int main(int argc, char *argv[]) {
     // Process the user supplied command line options.
     processCmdLineOptions(argc, argv);
 
-    openlog();
+    retVal = openlog();
+
+    if (retVal == EXIT_FAILURE){
+        exit(EXIT_FAILURE);
+    }
 
 
     LOG(BOTH, "************************************************************\n");
