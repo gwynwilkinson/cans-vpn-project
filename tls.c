@@ -32,16 +32,18 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile){
     }else if (protocol==UDP){
         method = (SSL_METHOD *)DTLS_server_method();
     }else{
+        // error handling and logging in line with elsewhere
         LOG(BOTH,"Error: Invalid protocol selected.\n");
         return NULL;
-        // TODO - bring error handling and logging in line with elsewhere
+
     }
 
     ctx = SSL_CTX_new(method);
     if(ctx == NULL){
-        printf("Error: Unable to create SSL context.\n");
+        //error handling and logging in line with elsewhere
+        LOG(BOTH,"Error: Unable to create SSL context.\n");
         return NULL;
-        // TODO - bring error handling and logging in line with elsewhere
+
     }
 
     // Define which cipher(s) we want TLS to use
@@ -55,7 +57,7 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile){
 
     error = SSL_CTX_use_certificate_file(ctx, certfile, SSL_FILETYPE_PEM);
     if (error != 1) {
-        printf("Error: Unable to load certificate.\n");
+        LOG(BOTH,"Error: Unable to load certificate.\n");
         return NULL;
         // TODO - bring error handling and logging in line with elsewhere
     }
@@ -63,7 +65,7 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile){
 
     error = SSL_CTX_use_PrivateKey_file(ctx, keyfile, SSL_FILETYPE_PEM);
     if (error != 1) {
-        printf("Error: Unable to load private key.\n");
+        LOG(BOTH,"Error: Unable to load private key.\n");
         return NULL;
         // TODO - bring error handling and logging in line with elsewhere
     }
@@ -71,7 +73,7 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile){
 
     error = SSL_CTX_check_private_key(ctx);
     if (error != 1) {
-        printf("Error: Invalid Private Key.\n");
+        LOG(BOTH,"Error: Invalid Private Key.\n");
         return NULL;
         // TODO - bring error handling and logging in line with elsewhere
     }
@@ -96,14 +98,14 @@ int tls_init(tlsSession* session, bool isServer, int protocol, int verify, char 
     }else if (!isServer && protocol==UDP){
         method = (SSL_METHOD *)DTLS_client_method();
     }else{
-        printf("Error: Invalid protocol selected.\n");
+        LOG(BOTH,"Error: Invalid protocol selected.\n");
         return -1;
         // TODO - bring error handling and logging in line with elsewhere
     }
 
     session->ctx = SSL_CTX_new(method);
     if(session->ctx == NULL){
-        printf("Error: Unable to create SSL context.\n");
+        LOG(BOTH,"Error: Unable to create SSL context.\n");
         return -1;
         // TODO - bring error handling and logging in line with elsewhere
     }
@@ -119,28 +121,28 @@ int tls_init(tlsSession* session, bool isServer, int protocol, int verify, char 
 
     error = SSL_CTX_use_certificate_file(session->ctx, certfile, SSL_FILETYPE_PEM);
     if (error != 1) {
-        printf("Error: Unable to load certificate.\n");
+        LOG(BOTH,"Error: Unable to load certificate.\n");
         return -1;
         // TODO - bring error handling and logging in line with elsewhere
     }
 
     error = SSL_CTX_use_PrivateKey_file(session->ctx, keyfile, SSL_FILETYPE_PEM);
     if (error != 1) {
-        printf("Error: Unable to load private key.\n");
+        LOG(BOTH,"Error: Unable to load private key.\n");
         return -1;
         // TODO - bring error handling and logging in line with elsewhere
     }
 
     error = SSL_CTX_check_private_key(session->ctx);
     if (error != 1) {
-        printf("Error: Invalid Private Key.\n");
+        LOG(BOTH,"Error: Invalid Private Key.\n");
         return -1;
         // TODO - bring error handling and logging in line with elsewhere
     }
 
     session->bio = BIO_new_ssl_connect(session->ctx);
     if (session->bio == NULL) {
-        printf("Error: Unable to create BIO.\n");
+        LOG(BOTH,"Error: Unable to create BIO.\n");
         return -1;
         // TODO - bring error handling and logging in line with elsewhere
     }
@@ -149,7 +151,7 @@ int tls_init(tlsSession* session, bool isServer, int protocol, int verify, char 
 
     BIO_get_ssl(session->bio, &(session->ssl));
     if (session->ssl == NULL) {
-        printf("Error: Unable to create SSL instance.\n");
+        LOG(BOTH,"Error: Unable to create SSL instance.\n");
         return -1;
         // TODO - bring error handling and logging in line with elsewhere
     }
@@ -193,7 +195,7 @@ void print_cn_name(const char* label, X509_NAME* const name)
         int length = ASN1_STRING_to_UTF8(&utf8, data);
         if(!utf8 || !(length > 0))  break; /* failed */
 
-        fprintf(stdout, "  %s: %s\n", label, utf8);
+        LOG(BOTH, "  %s: %s\n", label, utf8);
         success = 1;
 
     } while (0);
@@ -202,7 +204,7 @@ void print_cn_name(const char* label, X509_NAME* const name)
         OPENSSL_free(utf8);
 
     if(!success)
-        fprintf(stdout, "  %s: <not available>\n", label);
+        LOG(BOTH, "  %s: <not available>\n", label);
 }
 
 /*****************************************************************************************
@@ -244,7 +246,7 @@ void print_san_name(const char* label, X509* const cert)
                 }
 
                 if(len1 != len2) {
-                    fprintf(stderr, "  Strlen and ASN1_STRING size do not match (embedded null?): %d vs %d\n", len2, len1);
+                    LOG(BOTH, "  Strlen and ASN1_STRING size do not match (embedded null?): %d vs %d\n", len2, len1);
                 }
 
                 /* If there's a problem with string lengths, then     */
@@ -262,7 +264,7 @@ void print_san_name(const char* label, X509* const cert)
             }
             else
             {
-                fprintf(stderr, "  Unknown GENERAL_NAME type: %d\n", entry->type);
+                LOG(BOTH, "  Unknown GENERAL_NAME type: %d\n", entry->type);
             }
         }
 
@@ -275,7 +277,7 @@ void print_san_name(const char* label, X509* const cert)
         OPENSSL_free(utf8);
 
     if(!success)
-        fprintf(stdout, "  %s: <not available>\n", label);
+        LOG(BOTH, "  %s: <not available>\n", label);
 
 }
 
@@ -298,7 +300,7 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
     X509_NAME* sname = cert ? X509_get_subject_name(cert) : NULL;
 
     if(preverify_ok == 1) {
-        printf("Server Certificate Verification passed.\n");
+        LOG(BOTH, "Server Certificate Verification passed.\n");
 
         ASN1_TIME *certNotAfter;
         BIO *bio_stdout;
@@ -310,14 +312,15 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
         //printf("Server Certificate - Issuer details\n");
         //printf("-----------------------------------\n\n");
         //X509_NAME_print_ex(bio_stdout, iname, 2, XN_FLAG_SEP_MULTILINE);
-        printf("\n  ------------------------------------\n");
-        printf("  Server Certificate - Subject details\n");
-        printf("  ------------------------------------\n\n");
+        LOG(BOTH,"\n  ------------------------------------\n");
+        LOG(BOTH,"  Server Certificate - Subject details\n");
+        LOG(BOTH,"  ------------------------------------\n\n");
         X509_NAME_print_ex(bio_stdout, sname, 2, XN_FLAG_SEP_MULTILINE);
 
-        printf("\n\nServer Certificate Expiry date:- ");
+        LOG(BOTH,"\n\nServer Certificate Expiry date:- ");
+        //TODO - LOG ASN1_TIME_print to file
         ASN1_TIME_print(bio_stdout, certNotAfter);
-        printf("\n\n");
+        LOG(BOTH,"\n\n");
 
         int pDay=0, pSec=0;
 
@@ -325,7 +328,7 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
         ASN1_TIME_diff(&pDay,  &pSec, NULL, certNotAfter);
 
         if(pDay <= 30) {
-            printf("\n!!!! SERVER CERTIFICATE EXPIRES IN %d DAYS !!!!\n", pDay);
+            LOG(BOTH, "\n!!!! SERVER CERTIFICATE EXPIRES IN %d DAYS !!!!\n", pDay);
         }
 
         ASN1_STRING_free(certNotAfter);
@@ -335,12 +338,15 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
         // TODO - anyone know why this outputs twice on incorrect inputs?
         if(err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT) {
             char answer;
-            printf("\nWarning: Server Certificate is self-signed. You should only proceed if you trust this server. Proceed? (Y/n): \n");
+            LOG(LOGFILE,"\nWarning: Server Certificate is self-signed.");
+            LOG(SCREEN, "\nWarning: Server Certificate is self-signed. You should only proceed if you trust this server. Proceed? (Y/n): \n");
             while(1){
                 scanf("%c", &answer);
                 if (answer == 'Y'){
+                    LOG(LOGFILE,"\nProceeding as directed by user...");
                     return 1;
                 }else if (answer == 'n'){
+                    LOG(LOGFILE,"\nAborting as directed by user...");
                     exit(EXIT_FAILURE);
                 }else{
                     printf("\nPlease enter 'Y' to proceed or 'n' to abort. (Y/n): \n");
@@ -349,7 +355,7 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
         }
 
         if(err == X509_V_ERR_CERT_REVOKED) {
-            printf("Important: Server Certificate has been revoked and cannot be trusted.\nTerminating TLS connection attempt.\n");
+            LOG(BOTH,"Important: Server Certificate has been revoked and cannot be trusted.\nTerminating TLS connection attempt.\n");
             exit(EXIT_FAILURE);
         }
 
@@ -361,7 +367,7 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
 
 
 
-        printf("Verification failed: %s \n",
+        LOG(BOTH, "Verification failed: %s \n",
             X509_verify_cert_error_string(err));
     }
 }
