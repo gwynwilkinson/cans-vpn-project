@@ -935,7 +935,7 @@ void mgmtClientSocket(int connectionFD) {
         mgmtConnectionFD = 0;
         close(connectionFD);
 
-        // TODO - File Logging - Report termination of mgmt client.
+        // File Logging - Report termination of mgmt client.
 
         LOG(LOGFILE, "Management Client has terminated\n");
         return;
@@ -1211,7 +1211,7 @@ void mgmtClientListenerSelected(int mgmtSockFD, SSL_CTX *tls_ctx) {
 
     // Check if its a new client connection
     if (strncmp("MGMT Connection Request", buff, 18) == 0) {
-        // TODO - File Logging - Report Mgmt Client connection
+        // File Logging - Report Mgmt Client connection
         LOG(BOTH, "New Management client connection from %s:%d. Initialisation Msg:- %s\n",
             inet_ntoa(pPeerAddr->sin_addr),
             ntohs(pPeerAddr->sin_port), buff);
@@ -1453,7 +1453,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // TODO - File logging - report initialisation complete
+    // File logging - report initialisation complete
     LOG(BOTH, "VPN Server Initialisation Complete.\n");
     LOG(BOTH, "************************************************************\n");
 
