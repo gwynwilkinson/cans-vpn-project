@@ -12,7 +12,7 @@
 #define LOGFILE 1
 #define BOTH 2
 
-static FILE *vpn_logfp;
+static FILE *vpn_logfp = 0;
 
 /**************************************************************
  *
@@ -40,17 +40,20 @@ char array[100];
 
  if(mode == BOTH){
    
-   /* printf like normal */
+   // Write the log to stdout.
    va_start(args, fmt);
    fputs(array, stdout);
    vprintf(fmt, args);
    va_end(args);
-   
-   va_start(args, fmt);
-   fputs(array, vpn_logfp);
-   vfprintf(vpn_logfp,fmt, args);
-   va_end(args);
-   
+
+   // Write the log to the logfile. Only do this on the server
+   // (if the FD for the log file is non zero)
+   if(vpn_logfp != 0) {
+       va_start(args, fmt);
+       fputs(array, vpn_logfp);
+       vfprintf(vpn_logfp, fmt, args);
+       va_end(args);
+   }
  }
  else if(mode == SCREEN){
    fputs(array, stdout);
@@ -61,11 +64,15 @@ char array[100];
    va_end(args);
    
  }
- else if(mode == LOGFILE){
-   va_start(args, fmt);
-   fputs(array, vpn_logfp);
-   vfprintf(vpn_logfp,fmt, args);
-   va_end(args);
+ else if(mode == LOGFILE) {
+     // Write the log to the logfile. Only do this on the server
+     // (if the FD for the log file is non zero)
+     if (vpn_logfp != 0) {
+         va_start(args, fmt);
+         fputs(array, vpn_logfp);
+         vfprintf(vpn_logfp, fmt, args);
+         va_end(args);
+     }
  }
 
  return EXIT_SUCCESS;
