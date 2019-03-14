@@ -203,9 +203,13 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
             char answer;
             int status, temp;
 
-LOG(BOTH, "Warning: Server Certificate is self-signed.\n");
+<<<<<<< HEAD
+            printf("Warning: Server Certificate is self-signed. You should only proceed if you trust this server. Proceed? (Y/n): \n");
+=======
+            LOG(BOTH, "Warning: Server Certificate is self-signed.\n");
             LOG(SCREEN, "You should only proceed if you trust this server.\n");
             LOG(SCREEN, "Proceed? (Y/n): \n");
+>>>>>>> 84ff585e69e41e796182bc14bc6064a08f6fda1a
 
             status = scanf("%c", &answer);
 
@@ -567,3 +571,4 @@ int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int cookie_len
 
     return 0;
 }
+

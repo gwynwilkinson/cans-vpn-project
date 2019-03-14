@@ -129,9 +129,13 @@ int createTunDevice() {
     // Get the TUN interface info
     ioctl(tunFD, TUNSETIFF, &ifr);
 
-
+<<<<<<< HEAD
     LOG(BOTH, "TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
     LOG(BOTH, "Configuring the %s device as 10.4.0.250/24\n", ifr.ifr_name);
+=======
+    LOG(BOTH,"TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
+    LOG(BOTH,"Configuring the %s device as 10.4.0.250/24\n", ifr.ifr_name);
+>>>>>>> 84ff585e69e41e796182bc14bc6064a08f6fda1a
 
     // Configure the interface for the correct tun device.
     v[0] =  "/sbin/ifconfig";
@@ -392,8 +396,11 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
 
     // Only a single UDP client can be connected at a time
     if (udpClientConnected == false) {
+<<<<<<< HEAD
         LOG(BOTH, "New Incoming UDP connection\n");
 
+=======
+>>>>>>> 84ff585e69e41e796182bc14bc6064a08f6fda1a
         // Allocate the memory for the peerAddr structure
         pPeerAddr = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
 
@@ -1524,3 +1531,4 @@ int main(int argc, char *argv[]) {
         }
     }
 }
+
