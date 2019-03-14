@@ -8,6 +8,8 @@
 #define LOGFILE 1
 #define BOTH 2
 
+//static FILE *vpn_logfp;
+
 /**************************************************************
  *
  * Function:            LOG()

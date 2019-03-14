@@ -17,6 +17,7 @@
 #include <json-c/json.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509v3.h>
 #include "tls.h"
 #include "debug.h"
 #include "list.h"
@@ -129,8 +130,8 @@ int createTunDevice() {
     // Get the TUN interface info
     ioctl(tunFD, TUNSETIFF, &ifr);
 
-    printf("TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
-    printf("Configuring the %s device as 10.4.0.250/24\n", ifr.ifr_name);
+    LOG(BOTH, "TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
+    LOG(BOTH, "Configuring the %s device as 10.4.0.250/24\n", ifr.ifr_name);
 
     // Configure the interface for the correct tun device.
     v[0] =  "/sbin/ifconfig";
@@ -398,7 +399,7 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
     bzero(buff, BUFF_SIZE);
 
     if (udpClientConnected == false) {
-        printf("New Incoming UDP connection\n");
+        LOG(BOTH, "New Incoming UDP connection\n");
 
         // Allocate the memory for the peerAddr structure
         pPeerAddr = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
@@ -1411,6 +1412,15 @@ int main(int argc, char *argv[]) {
     // Process the user supplied command line options.
     processCmdLineOptions(argc, argv);
 
+    if(geteuid() != 0)
+    {
+        printf("VPN server must be started with root privileges.\n");
+        exit(EXIT_FAILURE);
+    }
+
+
+
+
     retVal = openlog();
 
     if (retVal == EXIT_FAILURE){
@@ -1422,7 +1432,7 @@ int main(int argc, char *argv[]) {
     LOG(BOTH, "VPN Server Initialisation:\n");
 
     // Set the ip forwarding - sysctl net.ipv4.ip_forward=1
-    LOG(BOTH, "Auto configuring IP forwarding\n ");
+    LOG(BOTH, "Auto configuring IP forwarding\n");
 
     v[0] =  "/sbin/sysctl";
     v[1] = "net.ipv4.ip_forward=1";
@@ -1468,13 +1478,13 @@ int main(int argc, char *argv[]) {
     SSL_CTX *dtls_ctx = NULL;
 
     //init both contexts using cert/key files
-    tls_ctx = tls_ctx_init(TCP, SSL_VERIFY_NONE, CERT_FILE, KEY_FILE);
+    tls_ctx = tls_ctx_init(TCP, SSL_VERIFY_PEER, CERT_FILE, KEY_FILE);
     if (tls_ctx == NULL) {
         perror("Server TCP tls_init");
         exit(EXIT_FAILURE);
     }
 
-    dtls_ctx = tls_ctx_init(UDP, SSL_VERIFY_NONE, CERT_FILE, KEY_FILE);
+    dtls_ctx = tls_ctx_init(UDP, SSL_VERIFY_PEER, CERT_FILE, KEY_FILE);
     if (dtls_ctx == NULL) {
         perror("Server UDP tls_init");
         exit(EXIT_FAILURE);

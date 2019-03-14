@@ -15,6 +15,7 @@
 #include <sys/wait.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+
 #include "tls.h"
 #include "debug.h"
 
@@ -684,6 +685,12 @@ int main(int argc, char *argv[]) {
 
     bzero(&clientSession, sizeof(tlsSession));
 
+    if(geteuid() != 0)
+    {
+        printf("VPN client must be started with root privileges.\n");
+        exit(EXIT_FAILURE);
+    }
+
     // Initialise command line argument buffers
     serverIP[0] = '\0';
     routeIP[0] = '\0';
@@ -706,7 +713,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Initialise the (D)TLS context based on the specified protocol
-    if (tls_init(&clientSession, false, protocol, SSL_VERIFY_NONE, serverIP, CERT_FILE, KEY_FILE) == -1) {
+    if (tls_init(&clientSession, false, protocol, SSL_VERIFY_PEER, serverIP, CERT_FILE, KEY_FILE) == -1) {
         perror("Client tls_init");
         exit(EXIT_FAILURE);
     }
