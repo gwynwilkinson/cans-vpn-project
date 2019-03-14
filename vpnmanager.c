@@ -8,18 +8,14 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include "tls.h"
+#include "logging.h"
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define SERVER_PORT 33333
 #define SERVER_IP "127.0.0.1"
 #define EXIT_PROGRAM 99
 #define BUFF_SIZE 2000
 #define TCP 6
 #define UDP 17
-
-// TODO - Fix the cert path
-//#define CERT_FILE "../certs/manager-cert.pem"
-//#define KEY_FILE  "../certs/manager-key.pem"
 
 #define CERT_FILE "./certs/client-cert.pem"
 #define KEY_FILE  "./certs/client-key.pem"
@@ -148,8 +144,8 @@ int connectToTCPServer(tlsSession *pClientSession) {
         exit(EXIT_FAILURE);
     }
 
-    printf("SSL connection is successful\n");
-    printf("SSL connection using %s\n", SSL_get_cipher(pClientSession->ssl));
+    LOG(SCREEN, "SSL connection is successful\n");
+    LOG(SCREEN, "SSL connection using %s\n", SSL_get_cipher(pClientSession->ssl));
 
     // Send the connection request to the server
     len = SSL_write(pClientSession->ssl, hello, strlen(hello));
@@ -160,7 +156,7 @@ int connectToTCPServer(tlsSession *pClientSession) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Connected to server\n");
+    LOG(SCREEN, "Connected to server\n");
     printf("\n--------------------------------------------------------------------------------\n");
 
     return mgmtSockFD;
@@ -225,6 +221,7 @@ int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
 
     // Copy the JSON string to 'buff'
     strcpy(buff, json_object_to_json_string(jObject));
+
 
     // Send the connection request to the server
     len = SSL_write(pClientSession->ssl, buff, strlen(buff));
@@ -298,7 +295,8 @@ int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
 
         printf(" Connection Index: %d\n", i);
         printf(" ====================\n");
-        printf(" RemoteIPAddress:\t%s:%d\n", json_object_get_string(jStringRemoteIPAddress), json_object_get_int(jIntRemoteIPPort));
+        printf(" RemoteIPAddress:\t%s:%d\n", json_object_get_string(jStringRemoteIPAddress),
+                json_object_get_int(jIntRemoteIPPort));
         printf(" TimeOfConnection:\t%s\n", json_object_get_string(jStringTimeConnected));
         // TODO - Could work out uptime here
         printf(" Protocol:\t\t%s\n", (json_object_get_int(jIntProtocol) == UDP) ? "UDP" : "TCP");
@@ -367,6 +365,8 @@ void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
 
     // Copy the JSON string to 'buff'
     strcpy(buff, json_object_to_json_string(jObject));
+
+    LOG(BOTH, "The JSON object created: %s\n", json_object_to_json_string(jObject));
 
     // Send the connection request to the server
     len = SSL_write(pClientSession->ssl, buff, strlen(buff));

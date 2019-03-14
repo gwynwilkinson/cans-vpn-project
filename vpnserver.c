@@ -134,8 +134,8 @@ int createTunDevice() {
     LOG(BOTH, "Configuring the %s device as 10.4.0.250/24\n", ifr.ifr_name);
 
     // Configure the interface for the correct tun device.
-    v[0] =  "/sbin/ifconfig";
-    v[1] = (char *)&ifr.ifr_name;
+    v[0] = "/sbin/ifconfig";
+    v[1] = (char *) &ifr.ifr_name;
     v[2] = "10.4.0.250/24";
     v[3] = "up";
     v[4] = 0;
@@ -150,7 +150,7 @@ int createTunDevice() {
     }
 
     if (retVal != 0) {
-        LOG(BOTH,"TUN %s interface configuration returned Error code %d\n", ifr.ifr_name, retVal);
+        LOG(BOTH, "TUN %s interface configuration returned Error code %d\n", ifr.ifr_name, retVal);
         exit(EXIT_FAILURE);
     }
 
@@ -323,8 +323,8 @@ void tunSelected(int tunFD) {
 
     if (printVerboseDebug) {
         LOG(SCREEN, "TUN->%s Tunnel- Length:- %d\n",
-               protocol == UDP ? "UDP" : "TCP",
-               (int) len);
+            protocol == UDP ? "UDP" : "TCP",
+            (int) len);
     }
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
@@ -342,7 +342,7 @@ void tunSelected(int tunFD) {
 
     if (pPeerAddr == NULL) {
         LOG(BOTH, "!!!!ERROR!!!! - tunSelected() could not find peer address structure for dest IP %s\n\n",
-                inet_ntoa(destAddr.sin_addr));
+            inet_ntoa(destAddr.sin_addr));
         return;
     }
 
@@ -444,7 +444,7 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
         ret = SSL_accept(pTLSSession->ssl);
         if (ret <= 0) {
             err = ERR_get_error();
-            if (err == 0){
+            if (err == 0) {
                 return;
             }
             perror("SSL_accept");
@@ -466,8 +466,8 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
 
         if (strncmp("Connection Request", buff, 18) == 0) {
             LOG(BOTH, "New UDP client connection from %s:%d.\n",
-                    inet_ntoa(pPeerAddr->sin_addr),
-                    ntohs(pPeerAddr->sin_port));
+                inet_ntoa(pPeerAddr->sin_addr),
+                ntohs(pPeerAddr->sin_port));
 
             // Send back to the client a unique IP address.
             uniqueClientIPAddress(buff);
@@ -513,13 +513,13 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
         len = SSL_read(pTLSSession->ssl, buff, BUFF_SIZE);
         if (len < 0) {
             perror("SSL_read");
-            LOG(BOTH,"%s\n", ERR_error_string(ERR_get_error(), buff));
+            LOG(BOTH, "%s\n", ERR_error_string(ERR_get_error(), buff));
         }
 
         if (strncmp("Terminate UDP Connection", buff, 24) == 0) {
             LOG(BOTH, "UDP client %s:%d terminating \n",
-                    inet_ntoa(pPeerAddr->sin_addr),
-                    ntohs(pPeerAddr->sin_port));
+                inet_ntoa(pPeerAddr->sin_addr),
+                ntohs(pPeerAddr->sin_port));
             LOG(SCREEN, "**********************************************************\n");
 
             // Delete the child process entry from the linked list
@@ -538,10 +538,10 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
         }
 
         if (printVerboseDebug) {
-            LOG(SCREEN,"UDP Tunnel->TUN - Source IP %s:%d - Length %d\n",
-                   inet_ntoa(pPeerAddr->sin_addr),
-                   (int) ntohs(pPeerAddr->sin_port),
-                   (int) len);
+            LOG(SCREEN, "UDP Tunnel->TUN - Source IP %s:%d - Length %d\n",
+                inet_ntoa(pPeerAddr->sin_addr),
+                (int) ntohs(pPeerAddr->sin_port),
+                (int) len);
         }
 
         // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
@@ -677,9 +677,9 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
 
     if (printVerboseDebug) {
         LOG(SCREEN, "TCP Tunnel->TUN - Source IP %s:%d - Length %d\n",
-               inet_ntoa(pPeerAddr->sin_addr),
-               (int) ntohs(pPeerAddr->sin_port),
-               (int) len);
+            inet_ntoa(pPeerAddr->sin_addr),
+            (int) ntohs(pPeerAddr->sin_port),
+            (int) len);
     }
 
     // Debug output, dump the IP and UDP or TCP headers of the buffer contents.
@@ -787,7 +787,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     }
 
     // Allocate the memory for a new TLS Session structure
-    if((pTLSSession = (tlsSession *) malloc(sizeof(tlsSession))) == NULL) {
+    if ((pTLSSession = (tlsSession *) malloc(sizeof(tlsSession))) == NULL) {
         // Memory allocation error
         perror("malloc");
         free(pPeerAddr);
@@ -797,7 +797,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     }
 
     // Create a new ssl object
-    if((pTLSSession->ssl = SSL_new(tls_ctx)) == NULL) {
+    if ((pTLSSession->ssl = SSL_new(tls_ctx)) == NULL) {
         perror("Error creating TCP SSL structure.");
         free(pPeerAddr);
         free(pTLSSession);
@@ -808,7 +808,7 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     SSL_set_fd(pTLSSession->ssl, connectionFD);
 
     // Perform the SSL Handshake
-    if(SSL_accept(pTLSSession->ssl) == -1) {
+    if (SSL_accept(pTLSSession->ssl) == -1) {
         // Handshake error
         char msg[1024];
         ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
@@ -1074,7 +1074,7 @@ void mgmtClientSocket(int connectionFD) {
             // Shutdown the DTLS SSL connection as the far end will see this as a connection close.
             int ret = SSL_shutdown(pTLSSession->ssl);
 
-            if(ret == 0) {
+            if (ret == 0) {
                 // SSL shutdown not yet finished. Must call a 2nd time
                 SSL_shutdown(pTLSSession->ssl);
 
@@ -1084,7 +1084,7 @@ void mgmtClientSocket(int connectionFD) {
 
                 // Delete the entry from the linked list
                 deleteEntryByTunIP(pTunIP);
-            } else if( ret < 0) {
+            } else if (ret < 0) {
                 perror("sendto");
 
                 // Error in process termination
@@ -1165,7 +1165,7 @@ void mgmtClientListenerSelected(int mgmtSockFD, SSL_CTX *tls_ctx) {
 
     if (printVerboseDebug) {
         LOG(BOTH, "Connection FD for new management client connection is %d\n", connectionFD);
-    } else
+    }
 
     // Allocate the memory for a new TLS Session structure
     if ((pMgmtClientTLSSession = (tlsSession *) malloc(sizeof(tlsSession))) == NULL) {
@@ -1178,7 +1178,7 @@ void mgmtClientListenerSelected(int mgmtSockFD, SSL_CTX *tls_ctx) {
     }
 
     // Create a new SSL object
-    if((pMgmtClientTLSSession->ssl = SSL_new(tls_ctx)) ==  NULL){
+    if ((pMgmtClientTLSSession->ssl = SSL_new(tls_ctx)) == NULL) {
         perror("Error creating Mgmt Client SSL structure.");
         free(pMgmtClientTLSSession);
         pMgmtClientTLSSession = NULL;
@@ -1189,7 +1189,7 @@ void mgmtClientListenerSelected(int mgmtSockFD, SSL_CTX *tls_ctx) {
     SSL_set_fd(pMgmtClientTLSSession->ssl, connectionFD);
 
     // Perform the SSL Handshake
-    if((SSL_accept(pMgmtClientTLSSession->ssl)) == -1) {
+    if ((SSL_accept(pMgmtClientTLSSession->ssl)) == -1) {
         // Handshake error
         char msg[1024];
         ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
@@ -1407,18 +1407,15 @@ int main(int argc, char *argv[]) {
     // Process the user supplied command line options.
     processCmdLineOptions(argc, argv);
 
-    if(geteuid() != 0)
-    {
+    if (geteuid() != 0) {
         printf("VPN server must be started with root privileges.\n");
         exit(EXIT_FAILURE);
     }
 
 
-
-
     retVal = openlog();
 
-    if (retVal == EXIT_FAILURE){
+    if (retVal == EXIT_FAILURE) {
         exit(EXIT_FAILURE);
     }
 
@@ -1429,7 +1426,7 @@ int main(int argc, char *argv[]) {
     // Set the ip forwarding - sysctl net.ipv4.ip_forward=1
     LOG(BOTH, "Auto configuring IP forwarding\n");
 
-    v[0] =  "/sbin/sysctl";
+    v[0] = "/sbin/sysctl";
     v[1] = "net.ipv4.ip_forward=1";
     v[2] = 0;
 
