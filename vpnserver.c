@@ -109,38 +109,51 @@ void uniqueClientIPAddress(char *pIpAddress) {
 int createTunDevice() {
 
     struct ifreq ifr;
-    char commandBuffer[70];
     int tunFD;
-    int retVal;
+    int retVal = 0;
+    char *v[5];
+    int pid;
+    pid_t c;
 
+    // Zero the structure
     memset(&ifr, 0, sizeof(ifr));
 
+    // Set the TUN flags and open the device
     ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-
     tunFD = open("/dev/net/tun", O_RDWR);
     if (tunFD == -1) {
         printf("Error opening TUN device!\n");
         return 0;
     }
 
+    // Get the TUN interface info
     ioctl(tunFD, TUNSETIFF, &ifr);
 
     printf("TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
-
     printf("Configuring the %s device as 10.4.0.250/24\n", ifr.ifr_name);
 
-    // Create the interface configuration command for the new interface name
-    sprintf(commandBuffer, "/sbin/ifconfig %s 10.4.0.250/24 up", ifr.ifr_name);
+    // Configure the interface for the correct tun device.
+    v[0] =  "/sbin/ifconfig";
+    v[1] = (char *)&ifr.ifr_name;
+    v[2] = "10.4.0.250/24";
+    v[3] = "up";
+    v[4] = 0;
 
-    retVal = system(commandBuffer);
+    // Need to for off for the execve
+    if ((pid = fork()) == 0) {
+        // Child process
+        retVal = execve(v[0], v, 0);
+    } else {
+        // Wait for the child to exit.
+        c = wait(NULL);
+    }
 
     if (retVal != 0) {
-        printf("TUN %s interface configuration returned Error code %d\n", ifr.ifr_name, retVal);
+        LOG(BOTH,"TUN %s interface configuration returned Error code %d\n", ifr.ifr_name, retVal);
         exit(EXIT_FAILURE);
     }
 
     // File logging - Report TUN creation
-
     LOG(LOGFILE, "TUN %s interface configuration completed successfully", ifr.ifr_name);
 
     return (tunFD);
@@ -1391,7 +1404,9 @@ void childParentPipeSelected() {
 int main(int argc, char *argv[]) {
 
     struct sigaction sa;
-    int tunFD, udpSockFD, tcpSockFD, mgmtSockFD, retVal;
+    int tunFD, udpSockFD, tcpSockFD, mgmtSockFD, retVal, pid;
+    pid_t c;
+    char *v[3];
 
     // Process the user supplied command line options.
     processCmdLineOptions(argc, argv);
@@ -1408,7 +1423,19 @@ int main(int argc, char *argv[]) {
 
     // Set the ip forwarding - sysctl net.ipv4.ip_forward=1
     LOG(BOTH, "Auto configuring IP forwarding\n ");
-    retVal = system("/sbin/sysctl net.ipv4.ip_forward=1");
+
+    v[0] =  "/sbin/sysctl";
+    v[1] = "net.ipv4.ip_forward=1";
+    v[2] = 0;
+
+    // Need to for off for the execve
+    if ((pid = fork()) == 0) {
+        // Child process
+        retVal = execve(v[0], v, 0);
+    } else {
+        // Wait for the child to exit.
+        c = wait(NULL);
+    }
 
     if (retVal != 0) {
         LOG(BOTH, "Configuring IP forwarding returned Error code %d\n", retVal);

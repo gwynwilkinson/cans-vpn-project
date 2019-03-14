@@ -12,6 +12,7 @@
 #include <netinet/udp.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <sys/wait.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include "tls.h"
@@ -77,7 +78,10 @@ int createTunDevice() {
     struct ifreq ifr;
     char commandBuffer[70];
     int tunFD;
-    int retVal;
+    int retVal = 0;
+    char *v[8];
+    int pid;
+    pid_t c;
 
     memset(&ifr, 0, sizeof(ifr));
 
@@ -95,10 +99,26 @@ int createTunDevice() {
     // Use the IP address returned to us in the connection handshake to configure the IP.
     printf("Configuring the '%s' device as %s/24\n", ifr.ifr_name, tunIP);
 
-    // Create the interface configuration command for the new interface name
-    sprintf(commandBuffer, "/sbin/ifconfig %s %s/24 up", ifr.ifr_name, tunIP);
+//    // Create the interface configuration command for the new interface name
+//    sprintf(commandBuffer, "/sbin/ifconfig %s %s/24 up", ifr.ifr_name, tunIP);
+//
+//    retVal = system(commandBuffer);
 
-    retVal = system(commandBuffer);
+    // Configure the interface for the correct tun device.
+    v[0] =  "/sbin/ifconfig";
+    v[1] = (char *)&ifr.ifr_name;
+    v[2] = (char *)tunIP;
+    v[3] = "up";
+    v[4] = 0;
+
+    // Need to for off for the execve
+    if ((pid = fork()) == 0) {
+        // Child process
+        retVal = execve(v[0], v, 0);
+    } else {
+        // Wait for the child to exit.
+        c = wait(NULL);
+    }
 
     if (retVal != 0) {
         printf("TUN %s interface configuration returned Error code %d\n", ifr.ifr_name, retVal);
@@ -107,10 +127,25 @@ int createTunDevice() {
 
     // Create the route add command for remote network over TUN
     sprintf(commandBuffer, "route add -net %s netmask %s %s", routeIP, routeNetmask, ifr.ifr_name);
-
     printf("Adding routing information - %s\n", commandBuffer);
 
-    retVal = system(commandBuffer);
+    v[0] =  "/sbin/route";
+    v[1] = "add";
+    v[2] = "-net";
+    v[3] = (char *)routeIP;
+    v[4] = "netmask";
+    v[5] = (char *)routeNetmask;
+    v[6] = (char *)&ifr.ifr_name;
+    v[7] = 0;
+
+    // Need to for off for the execve
+    if ((pid = fork()) == 0) {
+        // Child process
+        retVal = execve(v[0], v, 0);
+    } else {
+        // Wait for the child to exit.
+        c = wait(NULL);
+    }
 
     if (retVal != 0) {
         printf("TUN %s route configuration returned Error code %d\n", ifr.ifr_name, retVal);
