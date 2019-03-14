@@ -332,8 +332,9 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
             char answer;
             int status, temp;
 
-            LOG(LOGFILE, "Warning: Server Certificate is self-signed.");
-            LOG(SCREEN, "Warning: Server Certificate is self-signed. You should only proceed if you trust this server. Proceed? (Y/n): \n");
+            LOG(BOTH, "Warning: Server Certificate is self-signed.\n");
+            LOG(SCREEN, "You should only proceed if you trust this server.\n");
+            LOG(SCREEN, "Proceed? (Y/n): \n");
 
             status = scanf("%c", &answer);
 

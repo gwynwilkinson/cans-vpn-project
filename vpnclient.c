@@ -17,7 +17,7 @@
 #include <openssl/err.h>
 #include "tls.h"
 #include "debug.h"
-
+#include "logging.h"
 
 #define BUFF_SIZE 2000
 #define MAX_IP_ADDRESS_LENGTH 16
@@ -29,9 +29,11 @@
 #define CERT_FILE "./certs/client-cert.pem"
 #define KEY_FILE  "./certs/client-key.pem"
 
+// Global vars for debug flags
 bool printVerboseDebug = false;
 bool printIPHeaders = false;
 
+// Command line long options.
 static struct option long_options[] =
         {
                 {"vpn-server-ip",   required_argument, NULL, 's'},
@@ -45,13 +47,13 @@ static struct option long_options[] =
                 {NULL, 0,                              NULL, 0}
         };
 
+// Global vars
 char serverIP[17] = "";
 char routeIP[17] = "";
 char tunIP[17] = "";
 char routeNetmask[17] = "";
 ushort remotePort;
 char protocolType[4] = "";
-
 struct sockaddr_in peerAddr;
 int tunFD, sockFD;
 tlsSession clientSession;
@@ -83,26 +85,20 @@ int createTunDevice() {
     int pid;
     pid_t c;
 
+    // Initialise data and open the TUN device
     memset(&ifr, 0, sizeof(ifr));
-
     ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-
     tunFD = open("/dev/net/tun", O_RDWR);
     if (tunFD == -1) {
-        printf("Error opening TUN device!\n");
+        LOG(SCREEN, "Error opening TUN device!\n");
         return 0;
     }
 
     ioctl(tunFD, TUNSETIFF, &ifr);
-    printf("TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
+    LOG(SCREEN, "TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
 
     // Use the IP address returned to us in the connection handshake to configure the IP.
-    printf("Configuring the '%s' device as %s/24\n", ifr.ifr_name, tunIP);
-
-//    // Create the interface configuration command for the new interface name
-//    sprintf(commandBuffer, "/sbin/ifconfig %s %s/24 up", ifr.ifr_name, tunIP);
-//
-//    retVal = system(commandBuffer);
+    LOG(SCREEN, "Configuring the '%s' device as %s/24\n", ifr.ifr_name, tunIP);
 
     // Configure the interface for the correct tun device.
     v[0] =  "/sbin/ifconfig";
@@ -121,13 +117,13 @@ int createTunDevice() {
     }
 
     if (retVal != 0) {
-        printf("TUN %s interface configuration returned Error code %d\n", ifr.ifr_name, retVal);
+        LOG(SCREEN, "TUN %s interface configuration returned Error code %d\n", ifr.ifr_name, retVal);
         exit(EXIT_FAILURE);
     }
 
     // Create the route add command for remote network over TUN
     sprintf(commandBuffer, "route add -net %s netmask %s %s", routeIP, routeNetmask, ifr.ifr_name);
-    printf("Adding routing information - %s\n", commandBuffer);
+    LOG(SCREEN, "Adding routing information - %s\n", commandBuffer);
 
     v[0] =  "/sbin/route";
     v[1] = "add";
@@ -148,7 +144,7 @@ int createTunDevice() {
     }
 
     if (retVal != 0) {
-        printf("TUN %s route configuration returned Error code %d\n", ifr.ifr_name, retVal);
+        LOG(SCREEN, "TUN %s route configuration returned Error code %d\n", ifr.ifr_name, retVal);
         exit(EXIT_FAILURE);
     }
 
@@ -179,7 +175,6 @@ int connectToUDPServer(tlsSession *pClientSession) {
     peerAddr.sin_addr.s_addr = inet_addr(serverIP);
 
     udpSockFD = socket(AF_INET, SOCK_DGRAM, 0);
-
     if (udpSockFD == 0) {
         perror("UDP Socket Allocation");
         exit(EXIT_FAILURE);
@@ -199,20 +194,19 @@ int connectToUDPServer(tlsSession *pClientSession) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Opened UDP socket. FD = %d. Bound to IP = %s:%d\n",
+    LOG(SCREEN, "Opened UDP socket. FD = %d. Bound to IP = %s:%d\n",
            udpSockFD,
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
 
-    printf("Attempting connection to server\n");
+    LOG(SCREEN, "Attempting connection to server\n");
 
     // Perform TLS Handshake
     performHandshake(pClientSession, udpSockFD);
 
-    printf("Attempting connection to UDP server\n");
+    LOG(SCREEN, "Attempting connection to UDP server\n");
 
     // Send the connection request to the server
-//    len = send(tcpSockFD, hello, strlen(hello), 0);
     len = SSL_write(pClientSession->ssl, hello, strlen(hello));
 
     if (len == -1) {
@@ -221,25 +215,23 @@ int connectToUDPServer(tlsSession *pClientSession) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Waiting for response from server\n");
+    LOG(SCREEN, "Waiting for response from server\n");
 
     // Wait for the server to assign a unique TUN IP address
-//    len = recv(tcpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0);
     len = SSL_read(pClientSession->ssl, buff, MAX_IP_ADDRESS_LENGTH);
-
     if (len == -1) {
         // Connection error
         perror("UDP Connection Error");
         exit(EXIT_FAILURE);
     } else {
-        printf("Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
+        LOG(SCREEN, "Connected via '%s' to  IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
     }
 
+    // Null terminate the buffer and save the TUN IP
     buff[len] = '\0';
-
     strcpy(tunIP, buff);
 
-    printf("Allocated TUN IP \"%s\" from the server\n", tunIP);
+    LOG(SCREEN, "Allocated TUN IP \"%s\" from the server\n", tunIP);
 
     return udpSockFD;
 }
@@ -269,7 +261,6 @@ int connectToTCPServer(tlsSession *pClientSession) {
     peerAddr.sin_addr.s_addr = inet_addr(serverIP);
 
     tcpSockFD = socket(AF_INET, SOCK_STREAM, 0);
-
     if (tcpSockFD == 0) {
         perror("TCP Socket Allocation");
         exit(EXIT_FAILURE);
@@ -290,7 +281,7 @@ int connectToTCPServer(tlsSession *pClientSession) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Opened TCP socket. FD = %d. Bound to IP = %s:%d\n",
+    LOG(SCREEN, "Opened TCP socket. FD = %d. Bound to IP = %s:%d\n",
            tcpSockFD,
            inet_ntoa(localAddr.sin_addr),
            (int) ntohs(localAddr.sin_port));
@@ -298,12 +289,10 @@ int connectToTCPServer(tlsSession *pClientSession) {
     // Perform TLS Handshake
     performHandshake(pClientSession, tcpSockFD);
 
-    printf("Attempting connection to TCP server\n");
+    LOG(SCREEN, "Attempting connection to TCP server\n");
 
     // Send the connection request to the server
-//    len = send(tcpSockFD, hello, strlen(hello), 0);
     len = SSL_write(pClientSession->ssl, hello, strlen(hello));
-
     if (len == -1) {
         // Connection error
         perror("TCP Connection Error");
@@ -311,22 +300,20 @@ int connectToTCPServer(tlsSession *pClientSession) {
     }
 
     // Wait for the server to assign a unique TUN IP address
-//    len = recv(tcpSockFD, buff, MAX_IP_ADDRESS_LENGTH, 0);
     len = SSL_read(pClientSession->ssl, buff, MAX_IP_ADDRESS_LENGTH);
-
     if (len == -1) {
         // Connection error
         perror("TCP Connection Error");
         exit(EXIT_FAILURE);
     } else {
-        printf("Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
+        LOG(SCREEN, "Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
     }
 
+    // Null terminate the buffer and save the TUN IP
     buff[len] = '\0';
-
     strcpy(tunIP, buff);
 
-    printf("Allocated TUN IP \"%s\" from the server\n", tunIP);
+    LOG(SCREEN, "Allocated TUN IP \"%s\" from the server\n", tunIP);
 
     return tcpSockFD;
 
@@ -345,7 +332,7 @@ void performHandshake(tlsSession *pClientSession, int sockFD) {
 
     int sslError;
 
-    printf("Perform Handshake\n");
+    LOG(SCREEN, "Perform Handshake\n");
 
     /*Bind the socket to the SSL structure*/
     sslError = SSL_set_fd(pClientSession->ssl, sockFD);
@@ -362,8 +349,8 @@ void performHandshake(tlsSession *pClientSession, int sockFD) {
         exit(EXIT_FAILURE);
     }
 
-    printf("SSL connection is successful\n");
-    printf("SSL connection using %s\n", SSL_get_cipher(pClientSession->ssl));
+    LOG(SCREEN, "SSL connection is successful\n");
+    LOG(SCREEN, "SSL connection using %s\n", SSL_get_cipher(pClientSession->ssl));
 }
 
 /**********************************************************************************************************************
@@ -383,11 +370,11 @@ void performHandshake(tlsSession *pClientSession, int sockFD) {
 void tunSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
     ssize_t len, size;
     char buff[BUFF_SIZE];
+    struct iphdr *pIpHeader = (struct iphdr *) buff;
 
+    // Initialise the buffer and read the data from the TUN
     bzero(buff, BUFF_SIZE);
     len = read(tunFD, buff, BUFF_SIZE);
-
-    struct iphdr *pIpHeader = (struct iphdr *) buff;
 
     // Ignore IPv6 packets
     if (pIpHeader->version == 6) {
@@ -395,7 +382,7 @@ void tunSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
     }
 
     if (printVerboseDebug) {
-        printf("TUN->%s Tunnel- Length:- %d\n",
+        LOG(SCREEN, "TUN->%s Tunnel- Length:- %d\n",
                protocol == UDP ? "UDP" : "TCP",
                (int) len);
     }
@@ -413,16 +400,8 @@ void tunSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
         }
     }
 
-    // Use the correct method to send depending on the protocol used.
-    if (protocol == UDP) {
-        /*size = sendto(sockFD, buff, len, 0, (struct sockaddr *) &peerAddr,
-                      sizeof(peerAddr));*/
-        size = SSL_write(ssl, buff, len);
-    } else {
-        //size = send(sockFD, buff, len, 0);
-        size = SSL_write(ssl, buff, len);
-    }
-
+    // Write the buffer to the tunnel socket using SSL_Write in order to encrypt the packet.
+    size = SSL_write(ssl, buff, len);
     if (size == 0) {
         perror("sendto");
     }
@@ -453,7 +432,7 @@ void socketSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
 
     bzero(buff, BUFF_SIZE);
 
-    // Reading the SSL info is thew same for TLS and DTLS
+    // Reading the SSL info is the same for TLS and DTLS
     len = SSL_read(ssl, buff, BUFF_SIZE);
 
     if (len == -1) {
@@ -465,7 +444,7 @@ void socketSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
         return;
     } else if (len == 0) {
         // Connection has been closed. Quit.
-        printf("Server has closed the connection\n");
+        LOG(SCREEN, "Server has closed the connection\n");
         close(sockFD);
         exit(EXIT_SUCCESS);
     }
@@ -652,7 +631,7 @@ void sigIntHandler(int sig) {
     // Report that this signal can be ignored. We are handling it here.
     signal(sig, SIG_IGN);
 
-    printf("\nCtrl-C pressed. Terminating connection to VPN server\n");
+    LOG(SCREEN, "Ctrl-C pressed. Terminating connection to VPN server\n");
 
     // Send the termination message over the tunnel
     size = SSL_write(clientSession.ssl, buff, len);
@@ -694,8 +673,8 @@ int main(int argc, char *argv[]) {
     // Process the command line options.
     processCmdLineOptions(argc, argv);
 
-    printf("************************************************************\n");
-    printf("VPN Client Initialisation:\n");
+    LOG(SCREEN, "**********************************************************\n");
+    LOG(SCREEN, "VPN Client Initialisation:\n");
 
     // Set a local value for the protocol type so we do not have
     // to keep doing an expensive string compare.
@@ -731,8 +710,8 @@ int main(int argc, char *argv[]) {
     // Create the TUN device
     tunFD = createTunDevice();
 
-    printf("VPN Client Initialisation Complete.\n");
-    printf("************************************************************\n");
+    LOG(SCREEN, "VPN Client Initialisation Complete.\n");
+    LOG(SCREEN, "**********************************************************\n");
 
     // Enter the main loop
     while (1) {
