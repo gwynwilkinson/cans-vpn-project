@@ -122,7 +122,7 @@ int createTunDevice() {
     ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
     tunFD = open("/dev/net/tun", O_RDWR);
     if (tunFD == -1) {
-        printf("Error opening TUN device!\n");
+        LOG(BOTH, "Error opening TUN device!\n");
         return 0;
     }
 
