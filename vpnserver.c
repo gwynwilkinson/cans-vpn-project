@@ -1482,6 +1482,39 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    X509_CRL * crl = NULL;
+    FILE * crlfile = NULL;
+
+    if(!(crlfile = fopen("./crl/vpn.crl","r"))){
+        printf("Failed to open vpn.crl");
+    }
+
+    if(!(crl = PEM_read_X509_CRL(crlfile, NULL, 0, NULL))){
+        printf("Failed to read CRL data into object");
+    }
+
+    X509_STORE *tls_store = NULL;
+    X509_STORE *dtls_store = NULL;
+
+    if(!(tls_store = SSL_CTX_get_cert_store(tls_ctx))){
+        printf("Failed to retrieve X509 tls store");
+    }
+    if(!(dtls_store = SSL_CTX_get_cert_store(dtls_ctx))){
+        printf("Failed to retrieve X509 dtls store");
+    }
+    if(!(X509_STORE_add_crl(tls_store, crl))){
+        printf("Failed to add CRL to X509 tls store ");
+    }
+    if(!(X509_STORE_add_crl(dtls_store, crl))){
+        printf("Failed to add CRL to X509 dtls store ");
+    }
+    if(!(X509_STORE_set_flags(tls_store, X509_V_FLAG_CRL_CHECK))){
+        printf("Failed to set X509 tls store flags");
+    }
+    if(!(X509_STORE_set_flags(dtls_store, X509_V_FLAG_CRL_CHECK))){
+        printf("Failed to set X509 dtls store flags");
+    }
+
     // File logging - report initialisation complete
     LOG(BOTH, "VPN Server Initialisation Complete.\n");
     LOG(BOTH, "**********************************************************\n");
