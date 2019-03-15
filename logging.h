@@ -5,6 +5,8 @@
 #define LOGFILE 1
 #define BOTH 2
 
+FILE *vpn_logfp;
+
 /**************************************************************
  *
  * Function:            LOG()

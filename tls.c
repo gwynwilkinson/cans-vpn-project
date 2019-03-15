@@ -201,44 +201,42 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
 
     } else {
         if (err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT) {
-            char answer;
-            int status, temp;
 
-LOG(BOTH, "Warning: Server Certificate is self-signed.\n");
-            LOG(SCREEN, "You should only proceed if you trust this server.\n");
-            LOG(SCREEN, "Proceed? (Y/n): \n");
+            printf("Warning: Server Certificate is self-signed.\n");
+            printf("You should only proceed if you trust this server.\n");
+            // TODO - This prompt causes the server to hang, delete before we submit
+            //char answer;
+            //int status, temp;
 
-            status = scanf("%c", &answer);
+            //printf("Proceed? (Y/n): \n");
+
+            //status = scanf("%c", &answer);
 
             // Handle any input error
-            while ((status != 1) || ((answer != 'Y') && (answer != 'n'))) {
-                while ((temp = getchar()) != EOF && temp != '\n');
-                printf("Invalid entry. Please enter 'Y' to proceed or 'n' to abort. (Y/n): \n");
-                status = scanf("%c", &answer);
-            }
+            //while ((status != 1) || ((answer != 'Y') && (answer != 'n'))) {
+            //    while ((temp = getchar()) != EOF && temp != '\n');
+            //    printf("Invalid entry. Please enter 'Y' to proceed or 'n' to abort. (Y/n): \n");
+            //    status = scanf("%c", &answer);
+            //}
 
-            fflush(stdin);
+            //fflush(stdin);
 
-            if (answer == 'Y') {
-                printf("Proceeding as directed by user...\n");
-                return 1;
-            } else if (answer == 'n') {
-                printf("Aborting as directed by user...\n");
-                exit(EXIT_FAILURE);
-            }
+            //if (answer == 'Y') {
+            //    printf("Proceeding as directed by user...\n");
+            //    return 1;
+            //} else if (answer == 'n') {
+            //    printf("Aborting as directed by user...\n");
+            //    exit(EXIT_FAILURE);
+            //}
+            return 1;
 
         }
 
-        if (err == X509_V_ERR_CERT_REVOKED) {
-            printf("Important: Server Certificate has been revoked and cannot be trusted.\nTerminating TLS connection attempt.\n");
+
+        if(err == X509_V_ERR_HOSTNAME_MISMATCH) {
+            printf("Important: Server Certificate does not match the hostname; Connection is not secure.\nTerminating TLS connection attempt.\n");
             exit(EXIT_FAILURE);
         }
-
-        //TODO - uncomment once hostnames & certificates are matched up
-        //if(err == X509_V_ERR_HOSTNAME_MISMATCH) {
-        //    printf("Important: Server Certificate does not match the hostname; Connection is not secure.\nTerminating TLS connection attempt.\n");
-        //    exit(EXIT_FAILURE);
-        //}
 
 
 
@@ -362,29 +360,35 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
     X509_NAME *iname = cert ? X509_get_issuer_name(cert) : NULL;
     X509_NAME *sname = cert ? X509_get_subject_name(cert) : NULL;
 
-    printf("verify_callback (depth=%d)(preverify=%d)\n", depth, preverify);
+    //TODO - remove this debug code before we submit
+    //printf("verify_callback (depth=%d)(preverify=%d)\n", depth, preverify);
 
     if (preverify == 1) {
         LOG(BOTH, "Client Certificate Verification passed.\n");
 
         ASN1_TIME *certNotAfter;
         BIO *bio_stdout;
+        BIO *bio_vpnlog;
         certNotAfter = X509_getm_notAfter(cert);
 
         bio_stdout = BIO_new_fp(stdout, BIO_NOCLOSE);
+        bio_vpnlog = BIO_new_fp(vpn_logfp, BIO_NOCLOSE);
+
 
         LOG(BOTH, "------------------------------------\n");
         LOG(BOTH, "Client Certificate - Subject details\n");
         LOG(BOTH, "------------------------------------\n\n");
-        //TODO - LOG X509_NAME_print_ex to file
-        //X509_NAME_print_ex(bio_stdout, sname, 2, XN_FLAG_SEP_MULTILINE);
+        //TODO - This breaks the formatting of the log slightly and doesn't include timestamps
+        X509_NAME_print_ex(bio_stdout, sname, 2, XN_FLAG_SEP_MULTILINE);
+        X509_NAME_print_ex(bio_vpnlog, sname, 2, XN_FLAG_SEP_MULTILINE);
 
         LOG(BOTH, "\n\nServer Certificate Expiry date:- ");
 
-        //TODO - LOG ASN1_TIME_print to file
+        //TODO - This breaks the formatting of the log slightly and doesn't include timestamps
         ASN1_TIME_print(bio_stdout, certNotAfter);
+        ASN1_TIME_print(bio_vpnlog, certNotAfter);
 
-        printf("\n\n");
+        LOG(BOTH, "\n\n");
 
         int pDay = 0, pSec = 0;
 
