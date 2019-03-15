@@ -7,12 +7,11 @@
 
 #define VPN_LOG "/var/log/vpn.log"
 
-
 #define SCREEN 0
 #define LOGFILE 1
 #define BOTH 2
 
-static FILE *vpn_logfp = 0;
+FILE *vpn_logfp = 0;
 
 /**************************************************************
  *
@@ -20,63 +19,59 @@ static FILE *vpn_logfp = 0;
  *
  * Description:         Logging to an open a logfile with timestamp. 
  *
- *                      
- *
  **************************************************************/
+int LOG(int mode, char *fmt, ...) {
 
-int LOG(int mode,char *fmt, ...){
+    time_t t1;
+    char array[100];
+    va_list args;
+    va_list argscopy;
+    char *fmtcopy;
+    time(&t1);
 
-time_t t1;
+    // Get the current time.
+    strftime(array, sizeof(array) - 1, "[%Y-%m-%d %H:%M:%S] ", localtime(&t1));
 
-char array[100];
+    if (mode == BOTH) {
 
- va_list args;
- va_list argscopy;
- char *fmtcopy;
- 
- time(&t1);
- 
- strftime(array, sizeof(array) -1, "[%Y-%m-%d %H:%M:%S] ", localtime(&t1));
+        // Write the log to stdout.
+        va_start(args, fmt);
+        fputs(array, stdout);
+        vprintf(fmt, args);
+        va_end(args);
 
- if(mode == BOTH){
-   
-   // Write the log to stdout.
-   va_start(args, fmt);
-   fputs(array, stdout);
-   vprintf(fmt, args);
-   va_end(args);
+        // Write the log to the logfile. Only do this on the server
+        // (if the FD for the log file is non zero)
+        if (vpn_logfp != 0) {
+            va_start(args, fmt);
+            fputs(array, vpn_logfp);
+            vfprintf(vpn_logfp, fmt, args);
+            va_end(args);
+        }
+    } else if (mode == SCREEN) {
+        fputs(array, stdout);
 
-   // Write the log to the logfile. Only do this on the server
-   // (if the FD for the log file is non zero)
-   if(vpn_logfp != 0) {
-       va_start(args, fmt);
-       fputs(array, vpn_logfp);
-       vfprintf(vpn_logfp, fmt, args);
-       va_end(args);
-   }
- }
- else if(mode == SCREEN){
-   fputs(array, stdout);
-   
-   /* printf like normal */
-   va_start(args, fmt);
-   vprintf(fmt, args);
-   va_end(args);
-   
- }
- else if(mode == LOGFILE) {
-     // Write the log to the logfile. Only do this on the server
-     // (if the FD for the log file is non zero)
-     if (vpn_logfp != 0) {
-         va_start(args, fmt);
-         fputs(array, vpn_logfp);
-         vfprintf(vpn_logfp, fmt, args);
-         va_end(args);
-     }
- }
+        // printf like normal
+        va_start(args, fmt);
+        vprintf(fmt, args);
+        va_end(args);
 
- return EXIT_SUCCESS;
- 
+    } else if (mode == LOGFILE) {
+        // Write the log to the logfile. Only do this on the server
+        // (if the FD for the log file is non zero)
+        if (vpn_logfp != 0) {
+            va_start(args, fmt);
+            fputs(array, vpn_logfp);
+            vfprintf(vpn_logfp, fmt, args);
+            va_end(args);
+        }
+    }
+
+    // Flush the file contents from the buffer to the disk
+    fflush(vpn_logfp);
+
+    return EXIT_SUCCESS;
+
 }
 
 /**************************************************************
@@ -85,25 +80,19 @@ char array[100];
  *
  * Description:         Logging function to open a logfile for appending. 
  *
- *                      
- *
  **************************************************************/
+int openlog() {
 
+    // Open a file on disk for writing
 
-int openlog(){
+    if ((vpn_logfp = fopen(VPN_LOG, "a")) == NULL) {
+        perror("Cannot open file: VPN_LOG");
+        exit(EXIT_FAILURE);
+    } else {
+        LOG(LOGFILE, "Opened file: %s\n", VPN_LOG);
 
-/* 
-** Open a file on disk for writing
-*/
-
-  if((vpn_logfp = fopen(VPN_LOG, "a")) == NULL){
-    perror("Cannot open file: VPN_LOG");
-    exit(EXIT_FAILURE);
-  }
-  else{
-    LOG(LOGFILE,"Opened file: %s\n",VPN_LOG);
-    return EXIT_SUCCESS;
-  }
+        return EXIT_SUCCESS;
+    }
 }
 
 /**************************************************************
@@ -112,14 +101,12 @@ int openlog(){
  *
  * Description:         Logging function to flush and close a logfile.
  *
- *                      
- *
  **************************************************************/
-int closelog(){
+int closelog() {
 
-  fflush(vpn_logfp);
-  fclose(vpn_logfp);
-  
-  return EXIT_SUCCESS;
+    fflush(vpn_logfp);
+    fclose(vpn_logfp);
+
+    return EXIT_SUCCESS;
 }
 

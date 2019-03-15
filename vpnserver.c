@@ -155,7 +155,7 @@ int createTunDevice() {
     }
 
     // File logging - Report TUN creation
-    LOG(LOGFILE, "TUN %s interface configuration completed successfully", ifr.ifr_name);
+    LOG(LOGFILE, "TUN %s interface configuration completed successfully\n", ifr.ifr_name);
 
     return (tunFD);
 }

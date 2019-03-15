@@ -1,14 +1,9 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 
-#define VPN_LOG "/var/log/vpn.log"
-
-
 #define SCREEN 0
 #define LOGFILE 1
 #define BOTH 2
-
-//static FILE *vpn_logfp;
 
 /**************************************************************
  *
@@ -16,12 +11,8 @@
  *
  * Description:         Logging to an open a logfile with timestamp. 
  *
- *                      
- *
  **************************************************************/
-
 int LOG(int mode,char *fmt, ...);
-
 
 /**************************************************************
  *
@@ -29,21 +20,14 @@ int LOG(int mode,char *fmt, ...);
  *
  * Description:         Logging function to open a logfile for appending. 
  *
- *                      
- *
  **************************************************************/
-
-
 int openlog();
-
 
 /**************************************************************
  *
  * Function:            closelog()
  *
  * Description:         Logging function to flush and close a logfile.
- *
- *                      
  *
  **************************************************************/
 int closelog();
