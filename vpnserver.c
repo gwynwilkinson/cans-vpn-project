@@ -439,7 +439,7 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
             printf("%s\n", ERR_error_string(ERR_get_error(), buff));
         }
 
-        // TODO - examine error code 0 being thrown by SSL_accept when client times out
+        // TODO - examine error code 0 being thrown by SSL_accept when client times out (if we have time)
         // Complete the handshake
         ret = SSL_accept(pTLSSession->ssl);
         if (ret <= 0) {
@@ -447,7 +447,9 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
             if (err == 0) {
                 return;
             }
-            perror("SSL_accept");
+            //TODO - this prints error strings for unsuccessful handshakes (correct behaviour) - fix if time?
+            //TODO - double errors after failed handshake - auto-retry causes packets to be out of order?
+            perror("SSL_accept (DTLS)");
             printf("%s\n", ERR_error_string(err, buff));
             free(pTLSSession);
             free(pPeerAddr);
@@ -807,9 +809,12 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     // Bind the ssl object with the socket
     SSL_set_fd(pTLSSession->ssl, connectionFD);
 
+    //TODO - this prints error strings for unsuccessful handshakes (correct behaviour) - fix if time?
+
     // Perform the SSL Handshake
     if (SSL_accept(pTLSSession->ssl) == -1) {
         // Handshake error
+        perror("SSL_accept (TLS)");
         char msg[1024];
         ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
         printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));

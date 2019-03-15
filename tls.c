@@ -360,43 +360,6 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
     X509_NAME *iname = cert ? X509_get_issuer_name(cert) : NULL;
     X509_NAME *sname = cert ? X509_get_subject_name(cert) : NULL;
 
-    //TODO -
-/*
-    FILE * crlfile = NULL;
-
-    printf("1\n");
-    if(!(crlfile = fopen("./crl/vpn.crl","r"))){
-        printf("Failed to open vpn.crl");
-    }
-
-    X509_CRL * crl = NULL;
-    printf("2\n");
-    if(!(crl = PEM_read_X509_CRL(crlfile, NULL, 0, NULL))){
-        printf("Failed to read CRL data into object");
-    }
-    printf("3\n");
-    X509_STORE *store = X509_STORE_new();
-
-    X509_STORE_CTX *store_ctx = X509_STORE_CTX_new();
-
-    if(!(X509_STORE_add_crl(store, crl))){
-        printf("Failed to add CRL to X509 store ");
-    }
-    printf("4\n");
-    if(!(X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK))){
-        printf("Failed to set X509 store flags");
-    }
-    printf("5\n");
-
-    //if(!(X509_STORE_CTX_init(store_ctx, store , cert, NULL))){
-    //    printf("Failed to initialise X509 store");
-    //}
-    //printf("6\n");
-
-
-    X509_STORE_CTX_cleanup(x509_ctx);
-*/
-
     //TODO - remove this debug code before we submit
     //printf("verify_callback (depth=%d)(preverify=%d)\n", depth, preverify);
 
