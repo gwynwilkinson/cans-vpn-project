@@ -18,7 +18,7 @@ State or Province Name (full name) [Some-State]:Avon
 Locality Name (eg, city) []:Bristol
 Organization Name (eg, company) [Internet Widgits Pty Ltd]:UWE
 Organizational Unit Name (eg, section) []:CSCT
-Common Name (e.g. server FQDN or YOUR name) []:UWEVPN
+Common Name (e.g. server FQDN or YOUR name) []:UWE-CANS-VPN
 Email Address []:gwyn2.wilkinson@live.uwe.ac.uk
 
 ----------------------------------------------------------------------------
@@ -32,7 +32,7 @@ State or Province Name (full name) [Some-State]:Avon
 Locality Name (eg, city) []:Bristol
 Organization Name (eg, company) [Internet Widgits Pty Ltd]:UWE
 Organizational Unit Name (eg, section) []:CSCT
-Common Name (e.g. server FQDN or YOUR name) []:UWECLIENT
+Common Name (e.g. server FQDN or YOUR name) []:UWE-CANS-VPN-CLIENT
 Email Address []:gwyn2.wilkinson@live.uwe.ac.uk
 
 Please enter the following 'extra' attributes
@@ -43,3 +43,14 @@ An optional company name []:
 -----------------------------------------------------------------------------
 
 openssl ca -in client.csr -out client-cert.pem -md sha256 -cert vpn-cert.pem -keyfile vpn-key.pem -days 1
+
+This will fail if there exists a valid certificate with the same Distinguished Name (i.e. common name). If you need to create multiple valid certs for the same client (testing purposes ONLY) then delete the entries from index.txt after each generation.
+
+--------------------------------------------------------------------------------
+
+REVOCATION
+----------
+
+openssl ca -revoke client-cert.pem -cert vpn-cert.pem -keyfile vpn-key.pem 
+
+

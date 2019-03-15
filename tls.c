@@ -48,6 +48,7 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile) {
     // Define which cipher(s) we want TLS to use
     SSL_CTX_set_cipher_list(ctx, CHOSEN_CIPHERS);
     SSL_CTX_set_verify(ctx, verify, verify_callback);
+    SSL_CTX_load_verify_locations(ctx, "./certs/vpn-cert.pem", NULL);
 
     // Load and check our cert & key.
     int error = 0;
@@ -139,9 +140,9 @@ int tls_init(tlsSession *session, bool isServer, int protocol, int verify, char 
         return -1;
     }
 
-    // TODO - do not hardcode the hostname once we have our Pis set up
+    // TODO - do not hardcode the hostname once we have our Pis set up??
     X509_VERIFY_PARAM *vpm = SSL_get0_param(session->ssl);
-    X509_VERIFY_PARAM_set1_host(vpm, "vpn-server", 0);
+    X509_VERIFY_PARAM_set1_host(vpm, "UWE-CANS-VPN", 0);
 
     SSL_set_connect_state(session->ssl);
     SSL_set_mode(session->ssl, SSL_MODE_AUTO_RETRY);
