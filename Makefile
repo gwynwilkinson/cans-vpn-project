@@ -4,6 +4,8 @@ LDLIBS=-ljson-c -lssl -lcrypto
 DEPS = *h
 SERVER_OBJ = list.o sock.o logging.o
 COMMON_OBJ = debug.o tls.o logging.o
+DESTDIR = /usr/bin/vpn
+CERTDIR = /etc/vp/certs
 
 %.o: %.c %(DEPS)
 	$CC -c -o $@ $ $(LDLIBS)< $(CFLAGS)
@@ -16,3 +18,19 @@ vpnmanager: vpnmanager.o $(COMMON_OBJ)
 
 clean:
 	rm vpnserver vpnclient vpnmanager *.o
+
+install:
+	mkdir -p /usr/bin/vpn
+	mkdir -p /etc/vpn/certs
+	cp vpnclient  $(DESTDIR)
+	cp vpnserver  $(DESTDIR)
+	cp vpnmanager $(DESTDIR)
+    
+	chmod 4755 $(DESTDIR)/vpnserver
+	chmod 4755 $(DESTDIR)/vpnclient
+	chmod 700 $(DESTDIR)/vpnmanager
+
+uninstall:
+	rm $(DESTDIR)/vpnserver
+	rm $(DESTDIR)/vpnclient
+	rm $(DESTDIR)/vpnmanager
