@@ -212,7 +212,9 @@ int connectToUDPServer(tlsSession *pClientSession) {
 
     if (len == -1) {
         // Connection error
-        perror("UDP Connection Error");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     }
 
@@ -304,7 +306,9 @@ int connectToTCPServer(tlsSession *pClientSession) {
     len = SSL_read(pClientSession->ssl, buff, MAX_IP_ADDRESS_LENGTH);
     if (len == -1) {
         // Connection error
-        perror("TCP Connection Error");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     } else {
         LOG(SCREEN, "Connected via '%s' to remote server IP/Port:- %s:%d\n", protocolType, serverIP, remotePort);
@@ -347,7 +351,9 @@ void performHandshake(tlsSession *pClientSession, int sockFD) {
     //TODO - work out why this outputs "Client SSL_connect: Success" after unsuccessful handshake
     /* Connect to the server, SSL layer.*/
     if (SSL_connect(pClientSession->ssl) != 1) {
-        perror("Client SSL_connect");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     }
 
@@ -694,7 +700,9 @@ int main(int argc, char *argv[]) {
 
     // Initialise the (D)TLS context based on the specified protocol
     if (tls_init(&clientSession, false, protocol, SSL_VERIFY_PEER, serverIP, CERT_FILE, KEY_FILE) == -1) {
-        perror("Client tls_init");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     }
 

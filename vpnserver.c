@@ -435,22 +435,21 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
         int ret = DTLSv1_listen(pTLSSession->ssl, (BIO_ADDR *) pPeerAddr);
 
         if (ret < 0) {
-            perror("SSL_read");
-            printf("%s\n", ERR_error_string(ERR_get_error(), buff));
+            char msg[1024];
+            ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+            printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
+
         }
 
         // TODO - examine error code 0 being thrown by SSL_accept when client times out (if we have time)
         // Complete the handshake
         ret = SSL_accept(pTLSSession->ssl);
         if (ret <= 0) {
-            err = ERR_get_error();
-            if (err == 0) {
-                return;
-            }
             //TODO - this prints error strings for unsuccessful handshakes (correct behaviour) - fix if time?
             //TODO - double errors after failed handshake - auto-retry causes packets to be out of order?
-            perror("SSL_accept (DTLS)");
-            printf("%s\n", ERR_error_string(err, buff));
+            char msg[1024];
+            ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+            printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
             free(pTLSSession);
             free(pPeerAddr);
             return;
@@ -459,8 +458,9 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
         //  /* Tell openssl to process the packet now stored in the bio */
         err = SSL_read(pTLSSession->ssl, buff, BUFF_SIZE);
         if (err <= 0) {
-            perror("SSL_read");
-            printf("%s\n", ERR_error_string(ERR_get_error(), buff));
+            char msg[1024];
+            ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+            printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
             free(pTLSSession);
             free(pPeerAddr);
             return;
@@ -514,8 +514,9 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
         // Read the TLS info into the buffer
         len = SSL_read(pTLSSession->ssl, buff, BUFF_SIZE);
         if (len < 0) {
-            perror("SSL_read");
-            LOG(BOTH, "%s\n", ERR_error_string(ERR_get_error(), buff));
+            char msg[1024];
+            ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+            printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         }
 
         if (strncmp("Terminate UDP Connection", buff, 24) == 0) {

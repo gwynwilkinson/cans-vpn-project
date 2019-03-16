@@ -4,11 +4,12 @@
 #include <json-c/json.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include "vpnmanager.h"
+#include <time.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include "tls.h"
 #include "logging.h"
+#include "vpnmanager.h"
 
 #define SERVER_PORT 33333
 #define SERVER_IP "127.0.0.1"
@@ -128,7 +129,7 @@ int connectToTCPServer(tlsSession *pClientSession) {
     // Perform the TLS handshake
     printf("Perform Handshake\n");
 
-    /*Bind the socket to the SSL structure*/
+    // Bind the socket to the SSL structure
     sslError = SSL_set_fd(pClientSession->ssl, mgmtSockFD);
 
     if (sslError != 1) {
@@ -138,9 +139,11 @@ int connectToTCPServer(tlsSession *pClientSession) {
         exit(EXIT_FAILURE);
     }
 
-    /* Connect to the server, SSL layer.*/
-    if (SSL_connect(pClientSession->ssl) != 1) {
-        perror("Client SSL_connect");
+    // Connect to the server, SSL Layer
+    if ((sslError = SSL_connect(pClientSession->ssl)) != 1) {
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     }
 
@@ -213,6 +216,7 @@ int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
     json_object *jLoopObject;
     ssize_t len, numConnections;
     int i;
+    struct tm tm;
 
     // Format up the request type of "Current Connections" in JSON format
     json_object *jObject = json_object_new_object();
@@ -222,13 +226,14 @@ int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
     // Copy the JSON string to 'buff'
     strcpy(buff, json_object_to_json_string(jObject));
 
-
     // Send the connection request to the server
     len = SSL_write(pClientSession->ssl, buff, strlen(buff));
 
     if (len == -1) {
         // Connection error
-        perror("TCP Connection Error");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     } else if (len == 0) {
         printf("Connection Closed\n");
@@ -240,7 +245,9 @@ int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
 
     if (len == -1) {
         // Connection error
-        perror("MGMT Client TCP Connection Error");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     } else if(len == 0){
         printf("Server Terminted\n");
@@ -298,6 +305,7 @@ int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
         printf(" RemoteIPAddress:\t%s:%d\n", json_object_get_string(jStringRemoteIPAddress),
                 json_object_get_int(jIntRemoteIPPort));
         printf(" TimeOfConnection:\t%s\n", json_object_get_string(jStringTimeConnected));
+
         // TODO - Could work out uptime here
         printf(" Protocol:\t\t%s\n", (json_object_get_int(jIntProtocol) == UDP) ? "UDP" : "TCP");
         printf(" RemoteTunIP:\t\t%s\n\n", json_object_get_string(jStringRemoteTUNIPAddress));
@@ -373,7 +381,9 @@ void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
 
     if (len == -1) {
         // Connection error
-        perror("TCP Connection Error");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     } else if (len == 0) {
         printf("Connection Closed\n");
@@ -385,7 +395,9 @@ void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
 
     if (len == -1) {
         // Connection error
-        perror("MGMT Client TCP Connection Error");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
         exit(EXIT_FAILURE);
     } else if(len == 0){
         printf("Server Terminated\n");
