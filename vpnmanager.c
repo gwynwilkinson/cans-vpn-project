@@ -10,6 +10,8 @@
 #include "tls.h"
 #include "logging.h"
 #include "vpnmanager.h"
+#include <security/pam_appl.h>
+#include <security/pam_misc.h>
 
 #define SERVER_PORT 33333
 #define SERVER_IP "127.0.0.1"
@@ -22,6 +24,11 @@
 #define KEY_FILE  "./certs/client-key.pem"
 
 bool printVerboseDebug=false;
+
+static struct pam_conv conv = {
+        misc_conv,
+        NULL
+};
 
 /*****************************************************************************************
  *
@@ -331,8 +338,41 @@ void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
     ssize_t len;
     int index, temp, numConnections;
     int status = 0;
+    pam_handle_t *pamh=NULL;
+    int retval;
+    char user[50];
 
-    // TODO - Add authentication of user before performing this action
+    getlogin_r(user, sizeof(user));
+
+    printf("--------------------------------------------------------------------------------\n\n");
+    printf("To terminate a session requires re-authentication. Please enter the password for user '%s'\n", user);
+
+    // Start the PAM service
+    retval = pam_start("check_user", user, &conv, &pamh);
+
+    if (retval == PAM_SUCCESS)
+        // Verify the user exists
+        retval = pam_authenticate(pamh, 0);
+
+    if (retval == PAM_SUCCESS)
+        // Is the user allowed access?
+        retval = pam_acct_mgmt(pamh, 0);
+
+    // Close the PAM service
+    if (pam_end(pamh,retval) != PAM_SUCCESS) {
+        pamh = NULL;
+        printf("check_user: failed to release authenticator\n");
+        exit(1);
+    }
+
+    // Verify authentication status
+    if (retval == PAM_SUCCESS) {
+        printf("Authenticated\n");
+    } else {
+        printf("Not Authenticated\n");
+        printf("--------------------------------------------------------------------------------\n");
+        return;
+    }
 
     // Display the current connections to the user
     numConnections = displayCurrentConnections(mgmtSockFD, pClientSession);
@@ -374,7 +414,8 @@ void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
     // Copy the JSON string to 'buff'
     strcpy(buff, json_object_to_json_string(jObject));
 
-    LOG(BOTH, "The JSON object created: %s\n", json_object_to_json_string(jObject));
+    if(printVerboseDebug)
+        LOG(SCREEN, "The JSON object created: %s\n", json_object_to_json_string(jObject));
 
     // Send the connection request to the server
     len = SSL_write(pClientSession->ssl, buff, strlen(buff));

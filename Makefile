@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-g
-LDLIBS=-ljson-c -lssl -lcrypto
+LDLIBS=-ljson-c -lssl -lcrypto -lpam -lpam_misc
 DEPS = *h
 SERVER_OBJ = list.o sock.o logging.o
 COMMON_OBJ = debug.o tls.o logging.o

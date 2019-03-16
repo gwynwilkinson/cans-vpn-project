@@ -19,7 +19,11 @@ The VPN Management Client and Server programs interchange data using a JSON form
 To compile the code on a Raspberry Pi, we also need to install the openssl development libraries
 
     sudo apt-get install libssl-dev
-    
+
+The VPN Management Client requires authentication in order to terminate a session. The PAM development libraries are used for this purpose and need to be installed prior to building 
+
+    sudo apt-get install libpam0g-dev
+       
 --------------------------
 To compile the program: 
 --------------------------
