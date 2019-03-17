@@ -133,9 +133,6 @@ int connectToTCPServer(tlsSession *pClientSession) {
                (int) ntohs(localAddr.sin_port));
     }
 
-    // Perform the TLS handshake
-    printf("Perform Handshake\n");
-
     // Bind the socket to the SSL structure
     sslError = SSL_set_fd(pClientSession->ssl, mgmtSockFD);
 
@@ -345,7 +342,7 @@ void terminateConnection(int mgmtSockFD, tlsSession *pClientSession) {
     getlogin_r(user, sizeof(user));
 
     printf("--------------------------------------------------------------------------------\n\n");
-    printf("To terminate a session requires re-authentication. Please enter the password for user '%s'\n", user);
+    printf("Termination of a session requires re-authentication. Please enter the password for user '%s'\n", user);
 
     // Start the PAM service
     retval = pam_start("check_user", user, &conv, &pamh);

@@ -38,10 +38,10 @@ bool printIPHeaders = false;
 static struct option long_options[] =
         {
                 {"vpn-server-ip",   required_argument, NULL, 's'},
-                {"vpn-server-port", required_argument, NULL, 'p'},
+                {"vpn-server-port", required_argument, NULL, '1'},
                 {"route-network",   required_argument, NULL, 'n'},
                 {"route-netmask",   required_argument, NULL, 'm'},
-                {"protocol",        required_argument, NULL, '1'},
+                {"protocol",        required_argument, NULL, 'p'},
                 {"ip-headers",      no_argument,       NULL, 'i'},
                 {"verbose",         no_argument,       NULL, 'v'},
                 {"help",            no_argument,       NULL, 'h'},
@@ -505,16 +505,19 @@ void socketSelected(int tunFD, int sockFD, int protocol, SSL *ssl) {
  *****************************************************************************************/
 void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n Usage: %s [options]\n\n", argv[0]);
-    fprintf(stdout, " Proof of concept for VPN Client\n\n");
+    fprintf(stdout, " Implements a VPN Client using Open SSL libraries. The user can select either a TCP or UDP based \n"
+                    " transport that will be encrypted via TLS or DTLS respectively.\n"
+                    " By specifying the remote network and netmask via the command line the user can select which\n"
+                    " traffic will be sent via the VPN. EG a specific host address, a network, or default route.\n\n");
     fprintf(stdout, " Mandatory Arguments:- \n");
-    fprintf(stdout, "   -s --vpn-server-ip\t\t: Remote VPN Server IP in IPv4 format\n");
-    fprintf(stdout, "   -n --route-network\t\t: Remote Network IP to add route for\n");
+    fprintf(stdout, "   -s --vpn-server-ip\t\t: Remote VPN Server IP in IPv4 format - EG 10.2.0.0\n");
+    fprintf(stdout, "   -n --route-network\t\t: Remote Network IP to add route for - EG 255.255.255.0\n");
     fprintf(stdout, "   -m --route-netmask\t\t: Remote Network Netmask used in route add\n");
     fprintf(stdout, "\n Optional Arguments:- \n");
-    fprintf(stdout, "   -p --vpn-server-port\t\t: Remote VPN server Port. Default - 55555 (UDP Port)\n");
-    fprintf(stdout, "      --protocol <udp|tcp>\t: VPN protocol (UDP or TCP). Default - UDP\n");
-    fprintf(stdout, "   -v --verbose\t\t\t: Verbose debug logging. Dumps packet headers to stdout\n");
-    fprintf(stdout, "   -i --ip-headers\t\t: Print out IP headers\n");
+    fprintf(stdout, "       --vpn-server-port\t: Remote VPN server Port. Default - (UDP 55555 - TCP 44444)\n");
+    fprintf(stdout, "   -p  --protocol <udp|tcp>\t: VPN protocol (UDP or TCP). Default - TCP\n");
+    fprintf(stdout, "   -v --verbose\t\t\t: Verbose debug logging.\n");
+    fprintf(stdout, "   -i --ip-headers\t\t: Prints IP headers and message contents to stdout\n");
     fprintf(stdout, "   -h --help\t\t\t: Help\n");
     fprintf(stdout, "\n");
 }
@@ -543,7 +546,7 @@ void processCmdLineOptions(int argc, char *argv[]) {
                 }
                 break;
 
-            case 'p':
+            case '1':
                 // Remote VPN Server port.
                 remotePort = (ushort) atoi(optarg);
                 break;
@@ -564,7 +567,7 @@ void processCmdLineOptions(int argc, char *argv[]) {
                 }
                 break;
 
-            case '1':
+            case 'p':
                 // Protocol selection. Copy maximum of 3 characters to prevent
                 // buffer overflow.
                 if (strlen(optarg) <= 3) {
@@ -592,7 +595,7 @@ void processCmdLineOptions(int argc, char *argv[]) {
 
     // Default the protocol type to udp if it was not specified as an option.
     if (protocolType[0] == 0) {
-        strcpy(protocolType, "udp");
+        strcpy(protocolType, "tcp");
     } else {
         // Verify that the protocol was set to 'udp' or 'tcp'.
         if (strcmp(protocolType, "udp") != 0 && strcmp(protocolType, "tcp") != 0) {
@@ -668,6 +671,10 @@ int main(int argc, char *argv[]) {
     struct sigaction sa;
     int protocol;
     int sslError;
+    int pid;
+    int retVal = 0;
+    pid_t c;
+    char *v[3];
 
     bzero(&clientSession, sizeof(tlsSession));
 
@@ -696,6 +703,27 @@ int main(int argc, char *argv[]) {
         protocol = UDP;
     } else {
         protocol = TCP;
+    }
+
+    // Set the ip forwarding - sysctl net.ipv4.ip_forward=1
+    LOG(BOTH, "Auto configuring IP forwarding\n");
+
+    v[0] = "/sbin/sysctl";
+    v[1] = "net.ipv4.ip_forward=1";
+    v[2] = 0;
+
+    // Need to fork off for the execve
+    if ((pid = fork()) == 0) {
+        // Child process
+        retVal = execve(v[0], v, 0);
+    } else {
+        // Wait for the child to exit.
+        c = wait(NULL);
+    }
+
+    if (retVal != 0) {
+        LOG(BOTH, "Configuring IP forwarding returned Error code %d\n", retVal);
+        exit(EXIT_FAILURE);
     }
 
     // Initialise the (D)TLS context based on the specified protocol

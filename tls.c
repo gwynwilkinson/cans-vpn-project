@@ -25,6 +25,8 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile) {
     SSL_library_init();
     SSL_load_error_strings();
     SSL_CTX *ctx;
+    X509_CRL * crl = NULL;
+    FILE * crlfile = NULL;
 
     SSL_METHOD *method;
     if (protocol == TCP) {
@@ -47,7 +49,9 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile) {
 
     // Define which cipher(s) we want TLS to use
     SSL_CTX_set_cipher_list(ctx, CHOSEN_CIPHERS);
-    SSL_CTX_set_verify(ctx, verify, verify_callback);
+    // TODO - FIX THE CLIENT VERIFY!
+//    SSL_CTX_set_verify(ctx, verify, NULL);
+    SSL_CTX_set_verify(ctx, verify, NULL);
     SSL_CTX_load_verify_locations(ctx, "./certs/vpn-cert.pem", NULL);
 
     // Load and check our cert & key.
@@ -67,6 +71,27 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile) {
         LOG(BOTH, "Error: Invalid Private Key.\n");
         return NULL;
     }
+
+    if(!(crlfile = fopen("./crl/vpn.crl","r"))){
+        printf("Failed to open vpn.crl");
+    }
+
+    if(!(crl = PEM_read_X509_CRL(crlfile, NULL, 0, NULL))){
+        printf("Failed to read CRL data into object");
+    }
+
+    X509_STORE *store = NULL;
+
+    if(!(store = SSL_CTX_get_cert_store(ctx))){
+        printf("Failed to retrieve X509 tls store");
+    }
+    if(!(X509_STORE_add_crl(store, crl))){
+        printf("Failed to add CRL to X509 tls store ");
+    }
+    if(!(X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK))){
+        printf("Failed to set X509 tls store flags");
+    }
+
     // TODO -   Validate server cert on startup
     //          Really hard to figure this out because there's no documentation or examples
     //          Delete this if we don't figure it out, add to our report.
@@ -161,7 +186,6 @@ int tls_init(tlsSession *session, bool isServer, int protocol, int verify, char 
  *****************************************************************************************/
 int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
 
-
     X509 *cert = X509_STORE_CTX_get_current_cert(x509_ctx);
     int err = X509_STORE_CTX_get_error(x509_ctx);
     int depth = X509_STORE_CTX_get_error_depth(x509_ctx);
@@ -231,7 +255,6 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
             return 1;
 
         }
-
 
         if(err == X509_V_ERR_HOSTNAME_MISMATCH) {
             printf("Important: Server Certificate does not match the hostname; Connection is not secure.\nTerminating TLS connection attempt.\n");
@@ -356,6 +379,8 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
     X509 *cert = X509_STORE_CTX_get_current_cert(x509_ctx);
     int depth = X509_STORE_CTX_get_error_depth(x509_ctx);
     int err = X509_STORE_CTX_get_error(x509_ctx);
+
+    printf("Cert %p\n Preverify %d\n",cert, preverify);
 
     X509_NAME *iname = cert ? X509_get_issuer_name(cert) : NULL;
     X509_NAME *sname = cert ? X509_get_subject_name(cert) : NULL;

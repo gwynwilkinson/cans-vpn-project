@@ -129,7 +129,6 @@ int createTunDevice() {
     // Get the TUN interface info
     ioctl(tunFD, TUNSETIFF, &ifr);
 
-
     LOG(BOTH, "TUN %s created with FD = %d\n", ifr.ifr_name, tunFD);
     LOG(BOTH, "Configuring the %s device as 10.4.0.250/24\n", ifr.ifr_name);
 
@@ -1270,14 +1269,14 @@ void mgmtClientListenerSelected(int mgmtSockFD, SSL_CTX *tls_ctx) {
  *****************************************************************************************/
 void printUsage(int argc, char *argv[]) {
     fprintf(stdout, "\n Usage: %s [options]\n\n", argv[0]);
-    fprintf(stdout, " Proof of concept for VPN Server\n\n");
-    fprintf(stdout, " Mandatory Arguments:- \n");
-    fprintf(stdout, "   \n");
-    fprintf(stdout, "\n Optional Arguments:- \n");
+    fprintf(stdout, " Implements a VPN server using OpenSSL libraries. Supports both TCP and UDP transport\n"
+                    " encrypted via TLS and DTLS respectively. Can support multiple simultaneous TCP connections\n"
+                    " and one UDP based connection.\n\n");
+    fprintf(stdout, " Optional Arguments:- \n");
     fprintf(stdout, "   -t --tcp-server-port\t\t: Local TCP Server Port. Default - 44444\n");
     fprintf(stdout, "   -u --udp-server-port\t\t: Local UDP Server Port. Default - 55555\n");
-    fprintf(stdout, "   -v --verbose\t\t\t: Verbose debug logging. Dumps packet headers to stdout\n");
-    fprintf(stdout, "   -i --ip-headers\t\t: Print out IP headers\n");
+    fprintf(stdout, "   -v --verbose\t\t\t: Verbose debug logging.\n");
+    fprintf(stdout, "   -i --ip-headers\t\t: Prints IP headers and message contents to stdout.\n");
     fprintf(stdout, "   -h --help\t\t\t: Help\n");
     fprintf(stdout, "\n");
 }
@@ -1418,13 +1417,11 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-
+    // Open the log file for appending
     retVal = openlog();
-
     if (retVal == EXIT_FAILURE) {
         exit(EXIT_FAILURE);
     }
-
 
     LOG(BOTH, "**********************************************************\n");
     LOG(BOTH, "VPN Server Initialisation:\n");
@@ -1436,7 +1433,7 @@ int main(int argc, char *argv[]) {
     v[1] = "net.ipv4.ip_forward=1";
     v[2] = 0;
 
-    // Need to for off for the execve
+    // Need to fork off for the execve
     if ((pid = fork()) == 0) {
         // Child process
         retVal = execve(v[0], v, 0);
@@ -1488,43 +1485,13 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    X509_CRL * crl = NULL;
-    FILE * crlfile = NULL;
-
-    if(!(crlfile = fopen("./crl/vpn.crl","r"))){
-        printf("Failed to open vpn.crl");
-    }
-
-    if(!(crl = PEM_read_X509_CRL(crlfile, NULL, 0, NULL))){
-        printf("Failed to read CRL data into object");
-    }
-
-    X509_STORE *tls_store = NULL;
-    X509_STORE *dtls_store = NULL;
-
-    if(!(tls_store = SSL_CTX_get_cert_store(tls_ctx))){
-        printf("Failed to retrieve X509 tls store");
-    }
-    if(!(dtls_store = SSL_CTX_get_cert_store(dtls_ctx))){
-        printf("Failed to retrieve X509 dtls store");
-    }
-    if(!(X509_STORE_add_crl(tls_store, crl))){
-        printf("Failed to add CRL to X509 tls store ");
-    }
-    if(!(X509_STORE_add_crl(dtls_store, crl))){
-        printf("Failed to add CRL to X509 dtls store ");
-    }
-    if(!(X509_STORE_set_flags(tls_store, X509_V_FLAG_CRL_CHECK))){
-        printf("Failed to set X509 tls store flags");
-    }
-    if(!(X509_STORE_set_flags(dtls_store, X509_V_FLAG_CRL_CHECK))){
-        printf("Failed to set X509 dtls store flags");
-    }
-
     // File logging - report initialisation complete
     LOG(BOTH, "VPN Server Initialisation Complete.\n");
     LOG(BOTH, "**********************************************************\n");
 
+// Disable lint warning for endless loop.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
     // Enter the main server loop
     while (1) {
         fd_set readFDSet;
@@ -1559,4 +1526,6 @@ int main(int argc, char *argv[]) {
             if (FD_ISSET(mgmtConnectionFD, &readFDSet)) mgmtClientSocket(mgmtConnectionFD);
         }
     }
+
+#pragma clang diagnostic pop
 }
