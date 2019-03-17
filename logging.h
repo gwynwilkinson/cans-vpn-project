@@ -5,6 +5,9 @@
 #define LOGFILE 1
 #define BOTH 2
 
+#define VPN_LOG "/var/log/vpn.log"
+
+
 FILE *vpn_logfp;
 
 /**************************************************************
