@@ -1,3 +1,6 @@
+#define __USE_XOPEN
+#define _GNU_SOURCE
+
 #include <stdlib.h>
 #include <memory.h>
 #include <arpa/inet.h>
@@ -22,6 +25,8 @@
 
 #define CERT_FILE "./certs/client-cert.pem"
 #define KEY_FILE  "./certs/client-key.pem"
+
+
 
 bool printVerboseDebug=false;
 
@@ -215,6 +220,7 @@ int displayMainMenu() {
 int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
 
     char buff[BUFF_SIZE];
+    char array[100]; // used for current time.
     json_object *jParsedJson;
     json_object *jConnections;
     json_object *jLoopObject;
@@ -310,7 +316,26 @@ int displayCurrentConnections(int mgmtSockFD, tlsSession *pClientSession) {
                 json_object_get_int(jIntRemoteIPPort));
         printf(" TimeOfConnection:\t%s\n", json_object_get_string(jStringTimeConnected));
 
-        // TODO - Could work out uptime here
+        // work out the uptime of the connection
+        // parse the jStringTimeConnected
+        //sprintf(timeConnectedString,"%s",json_object_get_string(jStringTimeConnected));
+        struct tm tm;
+        strptime(json_object_get_string(jStringTimeConnected), "%d/%m/%Y - %H:%M:%S", &tm);
+        time_t connectedTime = mktime(&tm);  // connectedTime is now a time_t
+
+        time_t currentTime;
+        time(&currentTime);
+        strftime(array, sizeof(array) - 1, "[%d-%m-%Y %H:%M:%S] ", localtime(&currentTime));
+
+
+        double connectionLength = difftime(currentTime,connectedTime);
+
+        int hours = (int) (connectionLength / 3600);
+        int minutes = (int) (connectionLength / 60) % 60;
+        int seconds = (int) connectionLength  % 60;
+
+        printf(" ConnectionDuration:\t%02d:%02d:%02d \n",hours,minutes,seconds);
+
         printf(" Protocol:\t\t%s\n", (json_object_get_int(jIntProtocol) == UDP) ? "UDP" : "TCP");
         printf(" RemoteTunIP:\t\t%s\n\n", json_object_get_string(jStringRemoteTUNIPAddress));
     }
