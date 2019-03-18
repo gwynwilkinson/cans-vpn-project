@@ -604,9 +604,7 @@ void readChildPIPE(int pipeFD) {
     destAddr.sin_addr.s_addr = pIpHeader->daddr;
     destAddr.sin_family = AF_INET;
 
-    // Obtain the peerAddress structure for this destination and set
-    // the protocol variable so that we can determine which method to
-    // use.
+    // Obtain the TLS Session structures for this destination IP
     pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, &pTLSSession);
 
     if (pPeerAddr == NULL) {
@@ -654,7 +652,7 @@ void readChildTCPSocket(int tunFD, int connectionFD, struct sockaddr_in *pPeerAd
         // using the Peer IP and Port as a lookup.
         strcpy(buff, findByPeerIPAddress(pPeerAddr, &pTLSSession));
 
-        write(childParentPipe[1], buff, sizeof(buff));
+        write(childParentPipe[1], buff, strlen(buff));
 
         LOG(BOTH, "TCP Client %s:%d has closed the connection.\n",
             inet_ntoa(pPeerAddr->sin_addr),
@@ -814,7 +812,6 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     // Perform the SSL Handshake
     if (SSL_accept(pTLSSession->ssl) == -1) {
         // Handshake error
-        perror("SSL_accept (TLS)");
         char msg[1024];
         ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
         printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
@@ -828,10 +825,17 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
     if (len == -1) {
         // This shouldnt really happen. Close the connection FD anyway
         close(connectionFD);
-        perror("TCP Rcv error");
+        char msg[1024];
+        ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
+        printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
+        free(pPeerAddr);
+        free(pTLSSession);
+
         return;
     } else if (len == 0) {
         // This shouldnt really happen. Close the connection FD anyway
+        free(pPeerAddr);
+        free(pTLSSession);
         close(connectionFD);
         return;
     }

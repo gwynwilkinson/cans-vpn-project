@@ -50,8 +50,8 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile) {
     // Define which cipher(s) we want TLS to use
     SSL_CTX_set_cipher_list(ctx, CHOSEN_CIPHERS);
     // TODO - FIX THE CLIENT VERIFY!
-    SSL_CTX_set_verify(ctx, verify, verify_callback);
-//    SSL_CTX_set_verify(ctx, verify, NULL);
+//    SSL_CTX_set_verify(ctx, verify, verify_callback);
+    SSL_CTX_set_verify(ctx, verify, NULL);
     SSL_CTX_load_verify_locations(ctx, "./certs/vpn-cert.pem", NULL);
 
     // Load and check our cert & key.
