@@ -4,12 +4,8 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+#include "logging.h"
 
-#define VPN_LOG "/var/log/vpn.log"
-
-#define SCREEN 0
-#define LOGFILE 1
-#define BOTH 2
 
 FILE *vpn_logfp = 0;
 
@@ -104,6 +100,7 @@ int openlog() {
  **************************************************************/
 int closelog() {
 
+    LOG(LOGFILE,"Closing file: %s\n", VPN_LOG);
     fflush(vpn_logfp);
     fclose(vpn_logfp);
 
