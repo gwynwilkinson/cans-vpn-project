@@ -510,9 +510,9 @@ void printUsage(int argc, char *argv[]) {
                     " By specifying the remote network and netmask via the command line the user can select which\n"
                     " traffic will be sent via the VPN. EG a specific host address, a network, or default route.\n\n");
     fprintf(stdout, " Mandatory Arguments:- \n");
-    fprintf(stdout, "   -s --vpn-server-ip\t\t: Remote VPN Server IP in IPv4 format - EG 10.2.0.0\n");
-    fprintf(stdout, "   -n --route-network\t\t: Remote Network IP to add route for - EG 255.255.255.0\n");
-    fprintf(stdout, "   -m --route-netmask\t\t: Remote Network Netmask used in route add\n");
+    fprintf(stdout, "   -s --vpn-server-ip\t\t: Remote VPN Server IP in IPv4 format - EG 192.168.20.1\n");
+    fprintf(stdout, "   -n --route-network\t\t: Remote Network IP to add route for - EG 192.168.20.0\n");
+    fprintf(stdout, "   -m --route-netmask\t\t: Remote Network Netmask used in route add - EG 255.255.255.0\n");
     fprintf(stdout, "\n Optional Arguments:- \n");
     fprintf(stdout, "       --vpn-server-port\t: Remote VPN server Port. Default - (UDP 55555 - TCP 44444)\n");
     fprintf(stdout, "   -p  --protocol <udp|tcp>\t: VPN protocol (UDP or TCP). Default - TCP\n");

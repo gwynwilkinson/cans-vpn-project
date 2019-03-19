@@ -265,6 +265,9 @@ int initTCPServer(int portNumber) {
         exit(EXIT_FAILURE);
     }
 
+    // Create a PIPE for child TCP process -> parent communication
+    pipe(childParentPipe);
+
     return (tcpSockFD);
 }
 
@@ -1469,8 +1472,6 @@ int main(int argc, char *argv[]) {
         perror("Server sigaction");
         exit(EXIT_FAILURE);
     }
-
-    pipe(childParentPipe);
 
     //create SSL contexts for both TCP and UDP protocols
     SSL_CTX *tls_ctx = NULL;
