@@ -34,6 +34,10 @@ install:
 	chmod 700 $(CERTDIR)/certs
 	chmod 600 $(CERTDIR)/certs/*.pem
 
+	mkdir -p /var/log/vpn
+	touch /var/log/vpn/vpn.log
+	chmod 600 /var/log/vpn.log
+
 uninstall:
 	rm $(DESTDIR)/vpnserver
 	rm $(DESTDIR)/vpnclient
