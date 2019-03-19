@@ -194,8 +194,6 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
     X509_NAME *sname = cert ? X509_get_subject_name(cert) : NULL;
 
     if (preverify_ok == 1) {
-        printf("Server Certificate Verification passed.\n");
-
         ASN1_TIME *certNotAfter;
         BIO *bio_stdout;
         certNotAfter = X509_getm_notAfter(cert);
@@ -389,8 +387,6 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
     //printf("verify_callback (depth=%d)(preverify=%d)\n", depth, preverify);
 
     if (preverify == 1) {
-        LOG(BOTH, "Client Certificate Verification passed.\n");
-
         ASN1_TIME *certNotAfter;
         certNotAfter = X509_getm_notAfter(cert);
 
@@ -426,14 +422,10 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
 
         ASN1_STRING_free(certNotAfter);
         BIO_free(bio_stdout);
-
     } else {
-
         LOG(BOTH, "Verification failed: %s \n", X509_verify_cert_error_string(err));
         return preverify;
     }
-
-
 }
 
 /*****************************************************************************************

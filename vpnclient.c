@@ -662,8 +662,9 @@ void sigIntHandler(int sig) {
  *
  * Description:         Main program loop.
  *                      Process the command line options, create
- *                      the TUN, the UDP socket and connect the the
- *                      remote VPN server.
+ *                      the TUN, the UDP or TCP socket and connect the the
+ *                      remote VPN server. Monitors the tunnel and TUN sockets for
+ *                      activity.
  *
  *****************************************************************************************/
 int main(int argc, char *argv[]) {
