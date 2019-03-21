@@ -636,19 +636,20 @@ void readChildPIPE(int pipeFD) {
     pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, &pTLSSession);
 
     if (pPeerAddr == NULL) {
-        // Didnt find the specific remote IP. Must be GW-GW. Use the first tunnel
+        // Didnt find the specific remote IP. Must be GW-GW. Use the first tunnel to send the traffic over
         if (printVerboseDebug) {
             LOG(BOTH, "readChildPIPE() Unable to find TUN IP Address %s - Assuming GW-GW\n",
                 inet_ntoa(destAddr.sin_addr));
-            pPeerAddr = getPidByIndex(0, &pid, &pTunIP, &sockFD, &pTLSSession, &protocol, &pipeFD);
-            if (pPeerAddr == NULL) {
-                LOG(BOTH, "readChildPIPE() Unable to find TUN IP Address %s\n", inet_ntoa(destAddr.sin_addr));
-            } else {
-                if (printVerboseDebug) {
-                    LOG(BOTH, "readChildPIPE() sending GW-GW packet to %s:%d.\n",
-                        inet_ntoa(pPeerAddr->sin_addr),
-                        ntohs(pPeerAddr->sin_port));
-                }
+        }
+
+        pPeerAddr = getPidByIndex(0, &pid, &pTunIP, &sockFD, &pTLSSession, &protocol, &pipeFD);
+        if (pPeerAddr == NULL) {
+            LOG(BOTH, "readChildPIPE() Unable to find TUN IP Address %s\n", inet_ntoa(destAddr.sin_addr));
+        } else {
+            if (printVerboseDebug) {
+                LOG(BOTH, "readChildPIPE() sending GW-GW packet to %s:%d.\n",
+                    inet_ntoa(pPeerAddr->sin_addr),
+                    ntohs(pPeerAddr->sin_port));
             }
         }
     }
