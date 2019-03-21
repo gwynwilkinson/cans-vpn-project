@@ -29,8 +29,8 @@
 #define PENDING_CONNECTIONS 5
 
 
-#define CERT_FILE "./certs/vpn-cert.pem"
-#define KEY_FILE  "./certs/vpn-key.pem"
+#define CERT_FILE "/opt/vpn/certs/vpn-cert.pem"
+#define KEY_FILE  "/opt/vpn/certs/vpn-key.pem"
 
 // Global variables
 bool printVerboseDebug = false;
