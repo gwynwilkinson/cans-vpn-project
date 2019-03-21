@@ -294,9 +294,12 @@ void tunSelected(int tunFD) {
     struct sockaddr_in *pPeerAddr;
     struct iphdr *pIpHeader = (struct iphdr *) buff;
     tlsSession *pTLSSession;
+    char *pTunIP;
     int protocol;
     int connectionFD;
     int pipeFD;
+    int pid, sockFD;
+
     ssize_t len, size;
 
     // Initialise the buffer and read the data from the TUN
@@ -343,9 +346,28 @@ void tunSelected(int tunFD) {
     }
 
     if (pPeerAddr == NULL) {
-        LOG(BOTH, "!!!!ERROR!!!! - tunSelected() could not find peer address structure for dest IP %s\n\n",
-            inet_ntoa(destAddr.sin_addr));
-        return;
+        if (printVerboseDebug) {
+            LOG(BOTH, "tunSelected() could not find peer address structure for dest IP %s - Assuming GW-GW\n",
+                inet_ntoa(destAddr.sin_addr));
+        }
+
+        // Route could not be found for the packet destination IP. Likely to be a GW-GW scenario. For now
+        // send this down the first tunnel we have.
+        pPeerAddr = getPidByIndex(0, &pid, &pTunIP, &sockFD, &pTLSSession, &protocol, &pipeFD);
+        if (pPeerAddr == NULL) {
+            if (printVerboseDebug) {
+                LOG(BOTH, "!!!!ERROR!!!! - tunSelected() could not find peer address structure for dest IP %s\n",
+                    inet_ntoa(destAddr.sin_addr));
+                return;
+            }
+        } else {
+            if (printVerboseDebug) {
+                LOG(BOTH, "tunSelected() sending GW-GW packet to %s:%d for protocol %d.\n",
+                    inet_ntoa(pPeerAddr->sin_addr),
+                    ntohs(pPeerAddr->sin_port),
+                    protocol);
+            }
+        }
     }
 
     // For UDP, the server will send the data to the client directly.
@@ -593,6 +615,9 @@ void readChildPIPE(int pipeFD) {
     tlsSession *pTLSSession;
     int connectionFD;
     int protocol;
+    int pid;
+    int sockFD;
+    char *pTunIP;
 
     // Read the data from the PIPE (TUN)
     len = read(pipeFD, buff, BUFF_SIZE);
@@ -611,7 +636,21 @@ void readChildPIPE(int pipeFD) {
     pPeerAddr = findByTUNIPAddress(inet_ntoa(destAddr.sin_addr), &protocol, &pipeFD, &connectionFD, &pTLSSession);
 
     if (pPeerAddr == NULL) {
-        LOG(BOTH, "readChildPIPE() Unable to find TUN IP Address %s\n", inet_ntoa(destAddr.sin_addr));
+        // Didnt find the specific remote IP. Must be GW-GW. Use the first tunnel
+        if (printVerboseDebug) {
+            LOG(BOTH, "readChildPIPE() Unable to find TUN IP Address %s - Assuming GW-GW\n",
+                inet_ntoa(destAddr.sin_addr));
+            pPeerAddr = getPidByIndex(0, &pid, &pTunIP, &sockFD, &pTLSSession, &protocol, &pipeFD);
+            if (pPeerAddr == NULL) {
+                LOG(BOTH, "readChildPIPE() Unable to find TUN IP Address %s\n", inet_ntoa(destAddr.sin_addr));
+            } else {
+                if (printVerboseDebug) {
+                    LOG(BOTH, "readChildPIPE() sending GW-GW packet to %s:%d.\n",
+                        inet_ntoa(pPeerAddr->sin_addr),
+                        ntohs(pPeerAddr->sin_port));
+                }
+            }
+        }
     }
 
     // Send the buffer to the TCP socket
@@ -1041,6 +1080,8 @@ void mgmtClientSocket(int connectionFD) {
         int index;
         int pid;
         int sockFD;
+        int protocol;
+        int pipeFD;
         char *pTunIP = NULL;
         struct sockaddr_in *pPeerAddr = NULL;
         tlsSession *pTLSSession;
@@ -1053,7 +1094,7 @@ void mgmtClientSocket(int connectionFD) {
 
         index = json_object_get_int(jIntIndex);
 
-        pPeerAddr = getPidByIndex(index, &pid, &pTunIP, &sockFD, &pTLSSession);
+        pPeerAddr = getPidByIndex(index, &pid, &pTunIP, &sockFD, &pTLSSession, &protocol, &pipeFD);
 
         LOG(BOTH, "VPN Manager requested termination of connection for TUN IP %s. Peer address %s:%d\n",
             pTunIP,

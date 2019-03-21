@@ -299,7 +299,8 @@ char *findByPeerIPAddress(struct sockaddr_in* pPeerAddr, tlsSession **ppClientSe
  *                      connection FD.
  *
  *****************************************************************************************/
-struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSockFD, tlsSession **ppClientSession) {
+struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSockFD,
+        tlsSession **ppClientSession, int *pProtocol, int *pPipeFD) {
 
     int i = 0;
 
@@ -320,6 +321,8 @@ struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *pSo
         *pSockFD = pCurrent->connectionFD;
         *ppTunIP = pCurrent->tunIP;
         *ppClientSession = pCurrent->pTLSSession;
+        *pProtocol = pCurrent->protocol;
+        *pPipeFD = pCurrent->pipeFD;
         return(pCurrent->pPeerAddress);
     }
 

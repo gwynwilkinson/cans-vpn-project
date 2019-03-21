@@ -24,6 +24,6 @@ tlsSession *findUDPSession();
 void insertTail(char *pTunIP, int protocol, struct sockaddr_in *pPeerAddr, int pipeFD, int connectionFD, int pid, tlsSession *pTLSSession);
 void deleteEntryByTunIP(char *pTunIP);
 void deleteEntryByPeerAddr(struct sockaddr_in *pPeerAddr);
-struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *sockFD, tlsSession **ppClientSession);
+struct sockaddr_in* getPidByIndex(int index, int *pPid, char **ppTunIP, int *sockFD, tlsSession **ppClientSession, int *pProtocol, int *pPipeFD);
 void getDateTime(char pTimeString[]);
 #endif //VPN_TEST_CODE_LIST_H
