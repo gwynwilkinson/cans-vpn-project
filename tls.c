@@ -214,8 +214,11 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
         // Passing NULL as first value sets it to current time
         ASN1_TIME_diff(&pDay, &pSec, NULL, certNotAfter);
 
-        if (pDay <= 30) {
-            printf("\n!!!! SERVER CERTIFICATE EXPIRES IN %d DAYS !!!!\n", pDay);
+        if (pDay < 0) {
+            printf("\n!!!! SERVER CERTIFICATE HAS EXPIRED!!!!!\n");
+            return 0;
+        } else if (pDay <= 30) {
+                printf("\n!!!! SERVER CERTIFICATE EXPIRES IN %d DAYS !!!!\n", pDay);
         }
 
         ASN1_STRING_free(certNotAfter);
