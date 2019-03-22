@@ -35,8 +35,8 @@ install:
 	chmod 600 $(CERTDIR)/certs/*.pem
 
 	touch /var/log/vpn.log
-	sudo chown root.root /var/log/vpn.log
-	sudo chmod 600 /var/log/vpn.log
+	chown root.root /var/log/vpn.log
+	chmod 600 /var/log/vpn.log
 
 uninstall:
 	rm $(DESTDIR)/vpnserver
