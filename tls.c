@@ -438,8 +438,11 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
  * Description:         Used by the DTLS handshake mechanism to help with prevention of
  *                      DoS by adding a cookie to the handshake.
  *
+ *                      Reference code from Open Source Project - DTLS Examples
+ *                      https://github.com/nplab/DTLS-Examples/blob/master/src/dtls_udp_chargen.c
+ *
  *****************************************************************************************/
-// TODO - Reference this properly. Cookie code taken from - https://github.com/nplab/DTLS-Examples/blob/master/src/dtls_udp_chargen.c
+// TODO - Reference this properly. Cookie code taken from -
 int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) {
     unsigned char *buffer, result[EVP_MAX_MD_SIZE];
     unsigned int length = 0, resultlength;
@@ -522,6 +525,9 @@ int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) {
  * Description:         Used by the DTLS handshake mechanism to help with prevention of
  *                      DoS by verifying the client returned the cookie we sent them in
  *                      the handshake.
+ *
+ *                      Reference code from Open Source Project - DTLS Examples
+ *                      https://github.com/nplab/DTLS-Examples/blob/master/src/dtls_udp_chargen.c
  *
  *****************************************************************************************/
 int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int cookie_len) {
