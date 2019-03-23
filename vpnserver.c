@@ -465,12 +465,9 @@ void udpSocketSelected(int tunFD, int udpSockFD, int tcpSockFD, int mgmtSockFD, 
 
         }
 
-        // TODO - examine error code 0 being thrown by SSL_accept when client times out (if we have time)
         // Complete the handshake
         ret = SSL_accept(pTLSSession->ssl);
         if (ret <= 0) {
-            //TODO - this prints error strings for unsuccessful handshakes (correct behaviour) - fix if time?
-            //TODO - double errors after failed handshake - auto-retry causes packets to be out of order?
             char msg[1024];
             ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));
             printf("%s %s %s %s\n", msg, ERR_lib_error_string(0), ERR_func_error_string(0), ERR_reason_error_string(0));
@@ -849,8 +846,6 @@ void tcpListenerSocketSelected(int tunFD, int tcpSockFD, int udpSockFD, int mgmt
 
     // Bind the ssl object with the socket
     SSL_set_fd(pTLSSession->ssl, connectionFD);
-
-    //TODO - this prints error strings for unsuccessful handshakes (correct behaviour) - fix if time?
 
     // Perform the SSL Handshake
     if (SSL_accept(pTLSSession->ssl) == -1) {
@@ -1394,8 +1389,6 @@ void processCmdLineOptions(int argc, char *argv[]) {
  *
  *****************************************************************************************/
 void sigChldHandler(int sig) {
-    // TODO - File Logging - Do we need to report here? - Think its covered by the other places
-
     // Wait for the process to finish using the WNOHANG flag
     // to prevent the handler from blocking.
     while (waitpid((pid_t) (-1), 0, WNOHANG) > 0) {}

@@ -339,7 +339,7 @@ void performHandshake(tlsSession *pClientSession, int sockFD) {
 
     LOG(SCREEN, "Perform Handshake\n");
 
-    /*Bind the socket to the SSL structure*/
+    // Bind the socket to the SSL structure
     sslError = SSL_set_fd(pClientSession->ssl, sockFD);
     if (sslError != 1) {
         char msg[1024];
@@ -348,8 +348,7 @@ void performHandshake(tlsSession *pClientSession, int sockFD) {
         exit(EXIT_FAILURE);
     }
 
-    //TODO - work out why this outputs "Client SSL_connect: Success" after unsuccessful handshake
-    /* Connect to the server, SSL layer.*/
+    // Connect to the server, SSL layer.
     if (SSL_connect(pClientSession->ssl) != 1) {
         char msg[1024];
         ERR_error_string_n(ERR_get_error(), msg, sizeof(msg));

@@ -49,7 +49,10 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile) {
 
     // Define which cipher(s) we want TLS to use
     SSL_CTX_set_cipher_list(ctx, CHOSEN_CIPHERS);
-    // TODO - FIX THE CLIENT VERIFY!
+
+    // Client verify callback fails when a client connects
+    // for a 2nd time with the same certificate. Should investigate
+    // further
 //    SSL_CTX_set_verify(ctx, verify, verify_callback);
     SSL_CTX_set_verify(ctx, verify, NULL);
     SSL_CTX_load_verify_locations(ctx, "./certs/vpn-cert.pem", NULL);
@@ -91,10 +94,6 @@ SSL_CTX *tls_ctx_init(int protocol, int verify, char *certfile, char *keyfile) {
     if(!(X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK))){
         printf("Failed to set X509 tls store flags");
     }
-
-    // TODO -   Validate server cert on startup
-    //          Really hard to figure this out because there's no documentation or examples
-    //          Delete this if we don't figure it out, add to our report.
     return ctx;
 }
 
@@ -165,7 +164,6 @@ int tls_init(tlsSession *session, bool isServer, int protocol, int verify, char 
         return -1;
     }
 
-    // TODO - do not hardcode the hostname once we have our Pis set up??
     X509_VERIFY_PARAM *vpm = SSL_get0_param(session->ssl);
     X509_VERIFY_PARAM_set1_host(vpm, "UWE-CANS-VPN", 0);
 
@@ -229,30 +227,6 @@ int clientVerifyCallBack(int preverify_ok, X509_STORE_CTX *x509_ctx) {
 
             printf("Warning: Server Certificate is self-signed.\n");
             printf("You should only proceed if you trust this server.\n");
-            // TODO - This prompt causes the server to hang, delete before we submit
-            //char answer;
-            //int status, temp;
-
-            //printf("Proceed? (Y/n): \n");
-
-            //status = scanf("%c", &answer);
-
-            // Handle any input error
-            //while ((status != 1) || ((answer != 'Y') && (answer != 'n'))) {
-            //    while ((temp = getchar()) != EOF && temp != '\n');
-            //    printf("Invalid entry. Please enter 'Y' to proceed or 'n' to abort. (Y/n): \n");
-            //    status = scanf("%c", &answer);
-            //}
-
-            //fflush(stdin);
-
-            //if (answer == 'Y') {
-            //    printf("Proceeding as directed by user...\n");
-            //    return 1;
-            //} else if (answer == 'n') {
-            //    printf("Aborting as directed by user...\n");
-            //    exit(EXIT_FAILURE);
-            //}
             return 1;
 
         }
@@ -288,9 +262,6 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
     X509_NAME *iname = cert ? X509_get_issuer_name(cert) : NULL;
     X509_NAME *sname = cert ? X509_get_subject_name(cert) : NULL;
 
-    //TODO - remove this debug code before we submit
-    //printf("verify_callback (depth=%d)(preverify=%d)\n", depth, preverify);
-
     if (preverify == 1) {
         ASN1_TIME *certNotAfter;
         certNotAfter = X509_getm_notAfter(cert);
@@ -304,13 +275,11 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
         LOG(BOTH, "------------------------------------\n");
         LOG(BOTH, "Client Certificate - Subject details\n");
         LOG(BOTH, "------------------------------------\n\n");
-        //TODO - This breaks the formatting of the log slightly and doesn't include timestamps
         X509_NAME_print_ex(bio_stdout, sname, 2, XN_FLAG_SEP_MULTILINE);
         X509_NAME_print_ex(bio_vpnlog, sname, 2, XN_FLAG_SEP_MULTILINE);
 
         LOG(BOTH, "\n\nServer Certificate Expiry date:- ");
 
-        //TODO - This breaks the formatting of the log slightly and doesn't include timestamps
         ASN1_TIME_print(bio_stdout, certNotAfter);
         ASN1_TIME_print(bio_vpnlog, certNotAfter);
 
@@ -344,7 +313,6 @@ int verify_callback(int preverify, X509_STORE_CTX *x509_ctx) {
  *                      https://github.com/nplab/DTLS-Examples/blob/master/src/dtls_udp_chargen.c
  *
  *****************************************************************************************/
-// TODO - Reference this properly. Cookie code taken from -
 int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) {
     unsigned char *buffer, result[EVP_MAX_MD_SIZE];
     unsigned int length = 0, resultlength;
