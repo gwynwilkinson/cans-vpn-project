@@ -1,3 +1,5 @@
+** Designed, written and tested with Andrew McCarthy and Jonathan White.
+
 *************************************************
 * vpnserver.c vpn server program via UDP or TCP  
 * vpnclient.c vpn client program via UDP or TCP
@@ -7,7 +9,7 @@
 Clone the repository
 --------------------------
 
-    git clone https://gitlab.uwe.ac.uk/jd6-white/CANS-VPN-Project.git
+    git clone https://github.com/gwynwilkinson/cans-vpn-project
     
 --------------------------
 Install the pre-requisites
