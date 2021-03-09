@@ -1,4 +1,4 @@
-** Designed, written and tested with Andrew McCarthy and Jonathan White.
+**Designed, written and tested with Andrew McCarthy and Jonathan White.
 
 *************************************************
 * vpnserver.c vpn server program via UDP or TCP  
